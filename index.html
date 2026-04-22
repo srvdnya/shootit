@@ -108,10 +108,52 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:
 .slot-btn{background:rgba(0,0,0,0.55);border:1px solid #333;color:#666;font-family:monospace;font-size:11px;padding:5px 12px;border-radius:3px;min-width:70px;text-align:center;letter-spacing:1px;}
 .slot-btn.active{border-color:#f0c040;color:#f0c040;}
 .slot-btn.empty{opacity:0.3;}
+#mobile-controls,#mobile-look{display:none}
+body.mobile #mobile-controls,body.mobile #mobile-look{display:block}
+#mobile-controls{position:fixed;inset:0;pointer-events:none;z-index:60}
+#mobile-stick-zone{position:absolute;left:18px;bottom:24px;width:136px;height:136px;pointer-events:auto;touch-action:none}
+#mobile-stick-base{position:absolute;inset:18px;border-radius:50%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14)}
+#mobile-stick-knob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin-left:-27px;margin-top:-27px;border-radius:50%;background:rgba(240,192,64,0.36);border:1px solid rgba(240,192,64,0.85);box-shadow:0 0 18px rgba(240,192,64,0.15)}
+#mobile-actions{position:absolute;right:16px;bottom:22px;display:grid;grid-template-columns:repeat(3,62px);gap:10px;pointer-events:auto}
+.mobile-btn{width:62px;height:62px;border-radius:16px;border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.56);color:#f2f2f2;font:700 11px 'Courier New',monospace;letter-spacing:1px;touch-action:none}
+.mobile-btn.primary{background:rgba(240,192,64,0.18);border-color:rgba(240,192,64,0.6);color:#f0c040}
+#mobile-look{position:fixed;inset:0;z-index:15;touch-action:none}
+@media (max-width: 900px){
+  #hud-top{padding:10px 12px}
+  .hud-box{padding:7px 10px;min-width:68px}
+  .hud-value{font-size:20px}
+  #timer-display{font-size:16px;padding:5px 12px;top:10px}
+  #bomb-progress-wrap{top:86px;width:min(260px,58vw)}
+  #minimap{width:132px;height:132px;top:78px;right:10px}
+  #ammo-display{right:10px;bottom:104px;padding:7px 12px}
+  #slot-hud{bottom:92px;gap:6px}
+  .slot-btn{min-width:58px;padding:4px 8px;font-size:10px}
+  #objective-prompt{bottom:172px;font-size:11px;padding:6px 12px}
+  #pickup-prompt{bottom:136px;font-size:11px;padding:6px 12px}
+  body.mobile #crosshair{opacity:0.9}
+}
 </style>
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
+<div id="mobile-look"></div>
+<div id="mobile-controls">
+  <div id="mobile-stick-zone">
+    <div id="mobile-stick-base"></div>
+    <div id="mobile-stick-knob"></div>
+  </div>
+  <div id="mobile-actions">
+    <button class="mobile-btn primary" id="mb-fire">FIRE</button>
+    <button class="mobile-btn" id="mb-ads">ADS</button>
+    <button class="mobile-btn" id="mb-jump">JUMP</button>
+    <button class="mobile-btn" id="mb-use">USE</button>
+    <button class="mobile-btn" id="mb-reload">R</button>
+    <button class="mobile-btn" id="mb-buy">BUY</button>
+    <button class="mobile-btn" id="mb-slot1">1</button>
+    <button class="mobile-btn" id="mb-slot2">2</button>
+    <button class="mobile-btn" id="mb-slot3">3</button>
+  </div>
+</div>
 
 <div id="crosshair">
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -631,6 +673,9 @@ let bombExplosionFx=[];
 let playerHasBomb=false;
 let spectatorRise=0;
 let playerBombPackVisible=false;
+const IS_MOBILE_DEVICE=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints||0)>0;
+let mobileMoveX=0, mobileMoveY=0;
+let mobileLookId=null, mobileLookX=0, mobileLookY=0;
 const keys={};
 let mouseDX=0, mouseDY=0, yaw=0, pitch=0;
 const raycaster=new THREE.Raycaster();
@@ -638,14 +683,15 @@ const PLAYER_R=0.35;
 
 // ── INIT ─────────────────────────────────────────────────────────────────
 function init(){
+  if(IS_MOBILE_DEVICE) document.body.classList.add('mobile');
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x18181f);
   scene.fog=new THREE.FogExp2(0x18181f,0.011);
   camera=new THREE.PerspectiveCamera(80,innerWidth/innerHeight,0.05,250);
-  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game-canvas'),antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game-canvas'),antialias:!IS_MOBILE_DEVICE});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1.25:2));
   renderer.setSize(innerWidth,innerHeight);
-  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.enabled=!IS_MOBILE_DEVICE;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   clock=new THREE.Clock();
   camera.rotation.order='YXZ';
@@ -654,8 +700,8 @@ function init(){
   scene.add(Object.assign(new THREE.AmbientLight(0x303045),{intensity:0.85}));
   const sun=new THREE.DirectionalLight(0xfff0d0,1.1);
   sun.position.set(20,40,15);
-  sun.castShadow=true;
-  sun.shadow.mapSize.set(2048,2048);
+  sun.castShadow=!IS_MOBILE_DEVICE;
+  sun.shadow.mapSize.set(IS_MOBILE_DEVICE?1024:2048,IS_MOBILE_DEVICE?1024:2048);
   Object.assign(sun.shadow.camera,{near:1,far:160,left:-90,right:90,top:90,bottom:-90});
   scene.add(sun);
   const fill=new THREE.PointLight(0x4060ff,0.4,70);
@@ -2626,6 +2672,11 @@ function updatePlayer(dt){
   if(keys['KeyS']||keys['ArrowDown'])  move.sub(fw);
   if(keys['KeyA']||keys['ArrowLeft'])  move.sub(rt);
   if(keys['KeyD']||keys['ArrowRight']) move.add(rt);
+  if(IS_MOBILE_DEVICE){
+    move.addScaledVector(fw,Math.max(0,mobileMoveY));
+    move.addScaledVector(fw,-Math.max(0,-mobileMoveY));
+    move.addScaledVector(rt,mobileMoveX);
+  }
   if(move.lengthSq()>0) move.normalize();
   const wasOnGround=onGround;
   const accel=(onGround?GROUND_ACCEL:AIR_ACCEL)*dt;
@@ -2761,7 +2812,7 @@ function startGame(mode='match', bombStartSide=null){
     setupBombRound();
     document.getElementById('scoreboard').style.display='none';
     exitScope();
-    renderer.domElement.requestPointerLock();
+    if(!IS_MOBILE_DEVICE) renderer.domElement.requestPointerLock();
     return;
   }
 
@@ -2779,7 +2830,7 @@ function startGame(mode='match', bombStartSide=null){
   setStatus('');
   document.getElementById('scoreboard').style.display='none';
   exitScope();
-  renderer.domElement.requestPointerLock();
+  if(!IS_MOBILE_DEVICE) renderer.domElement.requestPointerLock();
 }
 
 function endGame(){
@@ -2913,18 +2964,95 @@ document.addEventListener('mouseup',e=>{
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('click',()=>{
   if(!gameRunning) return;
+  if(IS_MOBILE_DEVICE) return;
   if(document.pointerLockElement!==renderer.domElement) renderer.domElement.requestPointerLock();
 });
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1.25:2));
+});
 document.addEventListener('pointerlockchange',()=>{
   if(!document.pointerLockElement&&gameRunning){
     // auto-recapture after a short delay if still in game
   }
 });
 
+function setupMobileControls(){
+  if(!IS_MOBILE_DEVICE) return;
+  const stickZone=document.getElementById('mobile-stick-zone');
+  const stickKnob=document.getElementById('mobile-stick-knob');
+  const look=document.getElementById('mobile-look');
+  const maxR=34;
+  const resetStick=()=>{
+    mobileMoveX=0; mobileMoveY=0;
+    stickKnob.style.transform='translate(0px,0px)';
+  };
+  const applyStick=(touch)=>{
+    const rect=stickZone.getBoundingClientRect();
+    const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    let dx=touch.clientX-cx, dy=touch.clientY-cy;
+    const len=Math.hypot(dx,dy)||1;
+    if(len>maxR){ dx=dx/len*maxR; dy=dy/len*maxR; }
+    mobileMoveX=dx/maxR;
+    mobileMoveY=-dy/maxR;
+    stickKnob.style.transform=`translate(${dx}px,${dy}px)`;
+  };
+  stickZone.addEventListener('touchstart',e=>{ e.preventDefault(); applyStick(e.changedTouches[0]); },{passive:false});
+  stickZone.addEventListener('touchmove',e=>{ e.preventDefault(); applyStick(e.changedTouches[0]); },{passive:false});
+  stickZone.addEventListener('touchend',e=>{ e.preventDefault(); resetStick(); },{passive:false});
+  stickZone.addEventListener('touchcancel',resetStick,{passive:true});
+
+  look.addEventListener('touchstart',e=>{
+    if(!gameRunning||buyMenuOpen||chatOpen) return;
+    const t=e.changedTouches[0];
+    mobileLookId=t.identifier; mobileLookX=t.clientX; mobileLookY=t.clientY;
+  },{passive:true});
+  look.addEventListener('touchmove',e=>{
+    if(mobileLookId===null) return;
+    const t=[...e.changedTouches].find(x=>x.identifier===mobileLookId);
+    if(!t) return;
+    mouseDX+=Math.max(-36,Math.min(36,t.clientX-mobileLookX));
+    mouseDY+=Math.max(-36,Math.min(36,t.clientY-mobileLookY));
+    mobileLookX=t.clientX; mobileLookY=t.clientY;
+  },{passive:true});
+  const stopLook=()=>{ mobileLookId=null; };
+  look.addEventListener('touchend',stopLook,{passive:true});
+  look.addEventListener('touchcancel',stopLook,{passive:true});
+
+  const bindHold=(id,onStart,onEnd=()=>{})=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.addEventListener('touchstart',e=>{ e.preventDefault(); onStart(); },{passive:false});
+    el.addEventListener('touchend',e=>{ e.preventDefault(); onEnd(); },{passive:false});
+    el.addEventListener('touchcancel',e=>{ e.preventDefault(); onEnd(); },{passive:false});
+  };
+  bindHold('mb-fire',()=>{ if(activeSlot===3) knifeAttack('lmb'); else { autoFiring=true; if(!WEAPONS[currentWeapon].auto) doShoot(); } },()=>{ autoFiring=false; });
+  bindHold('mb-jump',()=>{ keys['Space']=true; },()=>{ keys['Space']=false; });
+  bindHold('mb-use',()=>{
+    const nearbyCarrier=getNearbyBombCarrierForPlayer();
+    if(nearbyCarrier){
+      playerHasBomb=true; bombEquipped=true; bombCarrierBotId=-1; bombDroppedPos=null; updateBombCarrierVisuals();
+    } else if(playerTeam==='attack'&&gameMode==='bomb'&&!bombPlanted&&bombDroppedPos&&camera.position.distanceTo(bombDroppedPos)<2.4){
+      bombDroppedPos=null; playerHasBomb=true; bombEquipped=true; bombCarrierBotId=-1;
+    } else {
+      tryPickupHealthDrop();
+    }
+  });
+  ['mb-slot1','mb-slot2','mb-slot3'].forEach((id,idx)=>bindHold(id,()=>equipSlot(idx+1)));
+  bindHold('mb-reload',()=>startReload());
+  bindHold('mb-buy',()=>openBuyMenu());
+  bindHold('mb-ads',()=>{
+    if(activeSlot===3){ knifeAttack('rmb'); return; }
+    if(currentWeapon==='glock'){ startGlockBurst(); return; }
+    if(isScoped) exitScope(); else enterScope();
+  });
+}
+
 
 window.addEventListener('DOMContentLoaded',()=>{
   try{ init(); buildMap(); }catch(e){ console.error('Boot error:',e); }
+  setupMobileControls();
 
   document.getElementById('btn-start').addEventListener('click',()=>startGame());
   const oldBomb=document.getElementById('btn-bomb');
@@ -3161,7 +3289,7 @@ function openChat(){
 function closeChat(){
   chatOpen=false;
   document.getElementById('chat-input-wrap').style.display='none';
-  renderer.domElement.requestPointerLock();
+  if(!IS_MOBILE_DEVICE) renderer.domElement.requestPointerLock();
 }
 function sendChat(){
   const txt=document.getElementById('chat-input').value.trim();
@@ -3257,7 +3385,7 @@ function openBuyMenu(){
 function closeBuyMenu(){
   buyMenuOpen=false;
   document.getElementById('buy-overlay').style.display='none';
-  renderer.domElement.requestPointerLock();
+  if(!IS_MOBILE_DEVICE) renderer.domElement.requestPointerLock();
 }
 
 function renderBuyMenu(){
