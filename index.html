@@ -94,6 +94,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:
 
 #timer-display{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.1);padding:5px 18px;border-radius:4px;font-size:20px;font-weight:bold;color:#fff;z-index:20;pointer-events:none;letter-spacing:3px}
 #timer-display.urgent{color:#f05050;border-color:rgba(240,80,80,0.35)}
+#bomb-progress-wrap{position:fixed;top:102px;left:50%;transform:translateX(-50%);width:min(340px,44vw);height:10px;border-radius:999px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);overflow:hidden;z-index:20;display:none}
+#bomb-progress-fill{width:0%;height:100%;background:linear-gradient(90deg,#ffce6a,#ff7040);box-shadow:0 0 12px rgba(255,130,64,0.5) inset}
+#minimap{position:fixed;top:92px;right:18px;width:170px;height:170px;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.12);border-radius:8px;z-index:20;display:none}
 #chat-box{position:fixed;bottom:20px;left:20px;z-index:30;width:300px;pointer-events:none;}
 #chat-messages{max-height:120px;overflow:hidden;display:flex;flex-direction:column;gap:3px;margin-bottom:6px;}
 .chat-msg{background:rgba(0,0,0,0.55);color:#eee;font-size:12px;font-family:monospace;padding:3px 8px;border-radius:3px;animation:fadeChat 8s forwards;}
@@ -123,8 +126,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:
 
 <div id="hud">
   <div id="hud-top">
-    <div class="hud-box"><div class="hud-label">Kills</div><div class="hud-value" id="kills-value">0</div></div>
-    <div></div>
+    <div class="hud-box"><div class="hud-label" id="left-hud-label">Kills</div><div class="hud-value" id="kills-value">0</div></div>
+    <div class="hud-box" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);text-align:center;min-width:340px;z-index:20;"><div class="hud-label" id="mode-label">Mode</div><div class="hud-value" id="mode-value" style="font-size:18px;color:#8de;">DM</div></div>
     <div class="hud-box" style="text-align:right"><div class="hud-label">Health</div><div class="hud-value" id="health-value">100</div></div>
   </div>
 </div>
@@ -134,6 +137,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:
   <div class="hud-value" id="ammo-value">20 / 80</div>
 </div>
 <div id="timer-display">5:00</div>
+<div id="bomb-progress-wrap"><div id="bomb-progress-fill"></div></div>
+<canvas id="minimap" width="170" height="170"></canvas>
 
 <div id="nametags"></div>
 <div id="chat-box"><div id="chat-messages"></div><div id="chat-input-wrap"><input id="chat-input" maxlength="80" placeholder="Say something..." autocomplete="off"/></div></div>
@@ -211,13 +216,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:
     <span id="sens-label" style="width:28px;font-weight:bold;color:#fff;">1.0</span>
   </div>
   <button class="screen-btn" id="btn-start">▶ START MATCH</button>
-  <button class="screen-btn" id="btn-bomb" style="background:#1d2a1d;color:#9cf0a0;border:1px solid #476447;">BOMB MODE</button>
+  <button class="screen-btn" id="btn-bomb" style="background:#2f2417;color:#ffd28a;border:1px solid #7b5333;">BOMB MODE</button>
+  <div id="bomb-side-pick" style="display:none;gap:10px;justify-content:center;align-items:center;margin-top:6px;">
+    <button class="screen-btn" id="btn-bomb-atk" style="background:#4b311d;color:#ffd28a;border:1px solid #8a5f3a;padding:10px 20px;font-size:12px;">START ATTACKER</button>
+    <button class="screen-btn" id="btn-bomb-def" style="background:#183247;color:#8dd6ff;border:1px solid #3b6e8e;padding:10px 20px;font-size:12px;">START DEFENDER</button>
+  </div>
   <button class="screen-btn" id="btn-test" style="background:#2a2a2a;color:#f0c040;border:1px solid #555;">TEST ARENA</button>
   <button class="screen-btn" id="btn-controls" style="margin-top:8px;font-size:12px;background:#1a1a2a;border:1px solid #333;">⌨ CONTROLS</button>
   <div id="controls-panel" style="display:none;margin-top:10px;font-size:12px;color:#aaa;line-height:2;text-align:left;background:#111;padding:10px 18px;border-radius:6px;width:260px;">
     <b style="color:#fff">MOVEMENT</b><br>WASD &mdash; Move &nbsp;|&nbsp; Space &mdash; Jump<br>Ctrl &mdash; Crouch (hold)<br><br>
     <b style="color:#fff">COMBAT</b><br>LMB &mdash; Shoot &nbsp;|&nbsp; RMB &mdash; Scope / ADS / Glock Burst<br>R &mdash; Reload &nbsp;|&nbsp; B &mdash; Buy Weapon<br><br>
-    <b style="color:#fff">OTHER</b><br>E &mdash; Pick Up Health &nbsp;|&nbsp; Enter &mdash; Chat<br>Tab &mdash; Scoreboard &nbsp;|&nbsp; F &mdash; Fullscreen
+    <b style="color:#fff">OTHER</b><br>4 &mdash; Bomb Mode Action &nbsp;|&nbsp; Enter &mdash; Chat<br>Tab &mdash; Scoreboard &nbsp;|&nbsp; F &mdash; Fullscreen<br>Bomb Death &mdash; Freecam Spectate
   </div>
 </div>
 
@@ -316,10 +325,21 @@ const GROUND_FRICTION   = 9;
 const AIR_DRAG          = 0.8;
 const BHOP_SPEED_CAP    = 8.25;
 const BOMB_ROUND_DURATION = 180;
-const BOMB_PLANT_TIME     = 2500;
-const BOMB_DEFUSE_TIME    = 3500;
+const BOMB_PLANT_TIME     = 5000;
+const BOMB_DEFUSE_TIME    = 10000;
 const BOMB_TIMER_DURATION = 40;
-const MAP_BOUND         = 47;
+const BOMB_TEAM_SIZE      = 5;
+const BOMB_BUY_PHASE      = 10;
+const BOMB_ROUND_BREAK    = 5000;
+const BOMB_WIN_TARGET     = 10;
+const BOMB_SIDE_SWITCH_ROUND = 5;
+const BOMB_ROUND_LIMIT    = 19;
+const BOMB_START_MONEY    = 800;
+const BOMB_WIN_MONEY      = 3250;
+const BOMB_LOSS_MONEY     = 1900;
+const BOMB_PLANT_LOSS_MONEY = 2300;
+const BOMB_KILL_MONEY     = 300;
+const MAP_BOUND         = 68;
 const MIN_SPAWN_DIST    = 12; // minimum distance between any two spawns
 
 const BOT_FIRST = ['Shadow','Neon','Blaze','Frost','Viper','Rogue','Steel','Ghost','Cobra','Storm','Axe','Hex','Nitro','Punk','Zero','Dart','Flash','Hawk','Wolf','Rex','Cyber','Dusk','Bolt','Spike'];
@@ -349,13 +369,213 @@ function showObjectivePrompt(txt,color='#8de',border='rgba(120,200,255,0.45)'){
 function clearObjectivePrompt(){
   showObjectivePrompt('');
 }
+function isBombFriendly(teamA, teamB){
+  return gameMode==='bomb' && teamA && teamB && teamA===teamB;
+}
+function getBombGunCost(key){ return BOMB_GUN_COSTS[key] ?? 0; }
+function isInsideBombSite(pos, siteId){
+  const site=BOMB_SITES[siteId];
+  if(!site) return false;
+  return Math.abs(pos.x-site.center.x)<=site.size.x*0.5 && Math.abs(pos.z-site.center.z)<=site.size.y*0.5;
+}
+function getActiveBombSite(){
+  let best='', bestDist=Infinity;
+  for(const [id,site] of Object.entries(BOMB_SITES)){
+    const dx=Math.max(0,Math.abs(camera.position.x-site.center.x)-site.size.x*0.5);
+    const dz=Math.max(0,Math.abs(camera.position.z-site.center.z)-site.size.y*0.5);
+    const d=Math.hypot(dx,dz);
+    if(d<bestDist){ bestDist=d; best=id; }
+  }
+  return {
+    id:best,
+    dist:bestDist,
+    pos:isInsideBombSite(camera.position,best)
+      ? new THREE.Vector3(camera.position.x,0.16,camera.position.z)
+      : BOMB_SITES[best]?.center.clone(),
+    inside:isInsideBombSite(camera.position,best)
+  };
+}
+function updateBombProgressBar(){
+  const wrap=document.getElementById('bomb-progress-wrap');
+  const fill=document.getElementById('bomb-progress-fill');
+  if(gameMode==='bomb'&&bombPlanted){
+    const pct=Math.max(0,Math.min(1,bombTimer/BOMB_TIMER_DURATION));
+    wrap.style.display='block';
+    fill.style.width=(pct*100)+'%';
+  } else {
+    wrap.style.display='none';
+    fill.style.width='0%';
+  }
+}
+function getBombCarrierBot(){
+  return bots.find(b=>b.id===bombCarrierBotId&&b.alive&&b.team==='attack')||null;
+}
+function assignBombCarrier(){
+  const aliveAttackers=bots.filter(b=>b.alive&&b.team==='attack'&&b.id!==bombCarrierBotId);
+  if(!aliveAttackers.length){ bombCarrierBotId=-1; return null; }
+  let next=aliveAttackers[0];
+  if(bombDroppedPos){
+    next=aliveAttackers.sort((a,b)=>a.mesh.position.distanceTo(bombDroppedPos)-b.mesh.position.distanceTo(bombDroppedPos))[0];
+  }
+  bombCarrierBotId=next?next.id:-1;
+  return next;
+}
+function getBombPickupTarget(){
+  if(bombDroppedPos) return bombDroppedPos.clone();
+  const carrier=getBombCarrierBot();
+  if(carrier) return carrier.mesh.position.clone();
+  return null;
+}
+function getNearbyBombCarrierForPlayer(maxDist=2.8){
+  if(gameMode!=='bomb' || playerTeam!=='attack' || !playerAlive || playerHasBomb || bombPlanted) return null;
+  const carrier=getBombCarrierBot();
+  if(!carrier) return null;
+  return carrier.mesh.position.distanceTo(camera.position)<=maxDist ? carrier : null;
+}
+let lastHeardNoisePos=null, lastHeardNoiseTime=0, lastHeardNoiseTeam='', lastHeardNoiseKind='';
+function registerBotNoise(pos, team, kind='gun'){
+  if(!pos || gameMode!=='bomb') return;
+  lastHeardNoisePos=pos.clone();
+  lastHeardNoiseTime=performance.now();
+  lastHeardNoiseTeam=team||'';
+  lastHeardNoiseKind=kind;
+}
+function hasFreshEnemyNoise(team){
+  return !!lastHeardNoisePos &&
+    !isBombFriendly(team,lastHeardNoiseTeam) &&
+    performance.now()-lastHeardNoiseTime<1800;
+}
+function getLivingAttackers(){
+  const out=[];
+  if(playerAlive && playerTeam==='attack') out.push({type:'player',pos:camera.position.clone(),team:'attack'});
+  for(const b of bots) if(b.alive && b.team==='attack') out.push({type:'bot',bot:b,pos:b.mesh.position.clone(),team:'attack'});
+  return out;
+}
+function getLivingDefenders(){
+  const out=[];
+  if(playerAlive && playerTeam==='defend') out.push({type:'player',pos:camera.position.clone(),team:'defend'});
+  for(const b of bots) if(b.alive && b.team==='defend') out.push({type:'bot',bot:b,pos:b.mesh.position.clone(),team:'defend'});
+  return out;
+}
+function hasEnemyNearSite(team, siteId, radius=14){
+  const site=BOMB_SITES[siteId];
+  if(!site) return false;
+  const enemies=team==='attack'?getLivingDefenders():getLivingAttackers();
+  return enemies.some(e=>e.pos.distanceTo(site.center)<radius);
+}
+function canDefenderCommitDefuse(bot, bombPos){
+  const attackers=getLivingAttackers();
+  for(const enemy of attackers){
+    const epos=enemy.pos.clone();
+    if(epos.distanceTo(bombPos)>18) continue;
+    const toEnemy=epos.clone().sub(bot.mesh.position);
+    const facing=new THREE.Vector3(0,0,1).applyQuaternion(bot.mesh.quaternion);
+    if(facing.dot(toEnemy.clone().setY(0).normalize())>0.2) return false;
+  }
+  return true;
+}
+function getAttackAdvanceTarget(bot){
+  if(bot.team!=='attack') return null;
+  if(bombDroppedPos && bot.id===bombCarrierBotId) return bombDroppedPos.clone();
+  if(playerAlive && playerTeam==='attack' && playerHasBomb){
+    const followOffsets=[
+      new THREE.Vector3(-3,0,4),
+      new THREE.Vector3(3,0,4),
+      new THREE.Vector3(-5,0,0),
+      new THREE.Vector3(5,0,0),
+      new THREE.Vector3(0,0,7)
+    ];
+    return camera.position.clone().add(followOffsets[bot.teamSlot%followOffsets.length]);
+  }
+
+  const site=bombTargetSite==='A'?'A':'B';
+  const laneBias=bot.role==='lurker'?'long':(bot.role==='entry'?'short':(bot.teamSlot%2===0?'short':'long'));
+  const firstShortX=[-8,-4,0,4,8][bot.teamSlot%5];
+  const firstLongX=[-16,-10,0,10,16][bot.teamSlot%5];
+  const routeA=laneBias==='short'
+    ? [new THREE.Vector3(firstShortX,0,46),new THREE.Vector3(-8,0,32),new THREE.Vector3(-14,0,18),new THREE.Vector3(-22,0,6),new THREE.Vector3(-30,0,-6),new THREE.Vector3(-40,0,-16),BOMB_SITES.A.center.clone()]
+    : [new THREE.Vector3(firstLongX,0,48),new THREE.Vector3(-20,0,42),new THREE.Vector3(-32,0,34),new THREE.Vector3(-44,0,20),new THREE.Vector3(-52,0,2),BOMB_SITES.A.center.clone()];
+  const routeB=laneBias==='short'
+    ? [new THREE.Vector3(firstShortX,0,46),new THREE.Vector3(8,0,32),new THREE.Vector3(14,0,18),new THREE.Vector3(22,0,6),new THREE.Vector3(30,0,-6),new THREE.Vector3(40,0,-16),BOMB_SITES.B.center.clone()]
+    : [new THREE.Vector3(firstLongX,0,48),new THREE.Vector3(20,0,42),new THREE.Vector3(32,0,34),new THREE.Vector3(44,0,20),new THREE.Vector3(52,0,2),BOMB_SITES.B.center.clone()];
+  const route=site==='A'?routeA:routeB;
+  const here=bot.mesh.position;
+
+  for(const point of route){
+    if(here.distanceTo(point)>6) return point.clone();
+  }
+
+  const attackHoldOffsets=[
+    new THREE.Vector3(-8,0,4),
+    new THREE.Vector3(8,0,4),
+    new THREE.Vector3(-12,0,-6),
+    new THREE.Vector3(12,0,-6),
+    new THREE.Vector3(0,0,10)
+  ];
+  return BOMB_SITES[site].plant.clone().add(attackHoldOffsets[bot.teamSlot%attackHoldOffsets.length]);
+}
+function getDefendAnchor(bot){
+  const aAnchors=[new THREE.Vector3(-46,0,-24),new THREE.Vector3(-38,0,-18),new THREE.Vector3(-30,0,-14)];
+  const bAnchors=[new THREE.Vector3(46,0,-24),new THREE.Vector3(38,0,-18),new THREE.Vector3(30,0,-14)];
+  const midAnchor=new THREE.Vector3(0,0,-6);
+  if(bombDefendPattern==='2-1-2'){
+    if(bot.teamSlot===0) return midAnchor.clone();
+    if(bot.teamSlot===1||bot.teamSlot===2) return aAnchors[bot.teamSlot-1].clone();
+    return bAnchors[Math.min(1,bot.teamSlot-3)].clone();
+  }
+  if(bombDefendPattern==='3A-2B'){
+    if(bot.teamSlot<=2) return aAnchors[bot.teamSlot].clone();
+    return bAnchors[Math.min(1,bot.teamSlot-3)].clone();
+  }
+  if(bot.teamSlot<=1) return aAnchors[bot.teamSlot].clone();
+  if(bot.teamSlot===2) return midAnchor.clone();
+  return bAnchors[Math.min(1,bot.teamSlot-3)].clone();
+}
+function getDefenderSearchSite(bot){
+  if(defendersKnownSite) return defendersKnownSite;
+  if(bombDefendPattern==='2-1-2'){
+    if(bot.teamSlot===0) return 'A';
+    return bot.teamSlot<=2?'A':'B';
+  }
+  if(bombDefendPattern==='3A-2B') return bot.teamSlot<=2?'A':'B';
+  return bot.teamSlot<=1?'A':'B';
+}
+function pickSpawnFromPool(pool, existingPositions=[]){
+  let best=pool[0], bestDist=-1;
+  for(const sp of pool){
+    let nearest=Infinity;
+    for(const ep of existingPositions){
+      const d=Math.hypot(sp.x-ep.x,sp.z-ep.z);
+      nearest=Math.min(nearest,d);
+    }
+    if(nearest===Infinity) return sp;
+    if(nearest>bestDist){ bestDist=nearest; best=sp; }
+  }
+  return best;
+}
+function isBombBuyPhase(){
+  return gameMode==='bomb' && bombBuyLock>0 && !bombPlanted && !bombRoundResult;
+}
+function spawnBombExplosionFX(pos){
+  bombExplosionFx.push({pos:pos.clone(), life:0.75, maxLife:0.75, radius:0.2});
+}
 
 const BOT_COLORS = [0xe05040,0x40a0e0,0xe080a0,0xa0e060,0xe0a030,0xc080ff,0xff8060,0x40e0c0,0xff4080,0x80ffb0];
+const BOMB_GUN_COSTS = {
+  glock:0, usp:200, deagle:700,
+  uzi:1200, p90:2350,
+  bucky:900,
+  ak47:2900, m4a1:2900,
+  awp:4700, scout:1700,
+  lmg:4200
+};
+const BOMB_SHIELD_COSTS = {shield_sm:400, shield_md:700, shield_lg:1000};
 
 // ── STATE ────────────────────────────────────────────────────────────────
 let scene, camera, renderer, clock;
 let gameRunning=false;
 let playerKills=0, playerDeaths=0, health=playerMaxHp;
+let playerAssists=0;
 let playerName='PLAYER';
 let playerMoney=0;
 let currentWeapon='glock', ammoMag=20, ammoReserve=80;
@@ -371,6 +591,7 @@ let killStreak=0, recentKillTimes=[];
 let crownMesh=null, crownHolder=null, prevCrownHolder=null;
 let footstepTimer=0;
 let lastHitBy=null;
+let playerDamageLog={};
 let spawnInvuln=0;
 let bobAccum=0;
 let speedBoost=0; // seconds remaining
@@ -384,10 +605,32 @@ let damageNumbers=[];
 let glockBursting=false;
 let glockBurstTimers=[];
 let bombSiteMesh=null, plantedBombMesh=null;
-let bombSitePos=new THREE.Vector3(0,0.08,0);
+const BOMB_SITES={
+  A:{ center:new THREE.Vector3(-48,0.08,-24), size:new THREE.Vector2(18,16), plant:new THREE.Vector3(-54,0.16,-30), color:0xffa45a },
+  B:{ center:new THREE.Vector3(48,0.08,-24), size:new THREE.Vector2(18,16), plant:new THREE.Vector3(54,0.16,-30), color:0x5ab8ff }
+};
+const BOMB_ATTACK_SPAWNS=[
+  {x:-16,z:56},{x:-8,z:58},{x:0,z:56},{x:8,z:58},{x:16,z:56}
+];
+const BOMB_DEFEND_SPAWNS=[
+  {x:-16,z:-56},{x:-8,z:-58},{x:0,z:-56},{x:8,z:-58},{x:16,z:-56}
+];
+let plantedBombSite='';
+let bombEquipped=false;
 let bombPlanted=false, bombExploded=false, bombDefused=false;
 let bombTimer=0, bombActionProgress=0;
 let bombActionType='', bombRoundResult='';
+let playerTeam='attack';
+let bombRoundNumber=1, attackWins=0, defendWins=0;
+let bombCarrierBotId=-1, bombTargetSite='A';
+let bombDefendPattern='2-1-2';
+let bombDroppedPos=null;
+let defendersKnownSite='';
+let bombBuyLock=0;
+let bombExplosionFx=[];
+let playerHasBomb=false;
+let spectatorRise=0;
+let playerBombPackVisible=false;
 const keys={};
 let mouseDX=0, mouseDY=0, yaw=0, pitch=0;
 const raycaster=new THREE.Raycaster();
@@ -642,32 +885,55 @@ function buildGunModel(){
     mk(0.010,0.060,0.008,0x131313, 0.028,-0.044,-0.240); // bipod L
     mk(0.010,0.060,0.008,0x131313,-0.028,-0.044,-0.240); // bipod R
   } else if(wk==='knife'){
-    g.rotation.z=0.48; g.rotation.x=-0.12; g.rotation.y=0.10;
-    mk(0.046,0.010,0.255,0x28292e,0.000,0.040,-0.150); // main blade
-    mk(0.030,0.006,0.220,0x121317,0.000,0.044,-0.136); // blade spine
-    mk(0.020,0.004,0.086,0x3b3c42,0.000,0.050,-0.218); // swedge
-    mk(0.018,0.004,0.120,0x907957,0.000,0.034,-0.112); // tan blade pattern
-    mk(0.050,0.016,0.030,0x111214,0.000,0.012,-0.010); // guard
-    mk(0.028,0.050,0.126,0x151516,0.000,-0.010,0.088); // handle
-    mk(0.020,0.038,0.114,0x222224,0.000,-0.002,0.088); // handle center
-    mk(0.012,0.010,0.024,0x4f5055,0.000,0.032,0.020); // upper groove
-    mk(0.012,0.010,0.024,0x4f5055,0.000,0.020,0.060); // mid groove
-    mk(0.012,0.010,0.024,0x4f5055,0.000,0.008,0.100); // lower groove
-    mk(0.032,0.014,0.026,0x0f1012,0.000,-0.028,0.165); // pommel
-    mk(0.006,0.010,0.022,0x4a4b51,0.000,0.052,-0.020); // jimping 1
-    mk(0.006,0.010,0.022,0x4a4b51,0.000,0.052,0.006); // jimping 2
-    mk(0.040,0.085,0.100,0x3b3937,-0.060,-0.072,0.108,0.45); // hand sleeve
-    mk(0.044,0.050,0.095,0xc69363,-0.020,-0.026,0.096,0.28); // hand
-    mk(0.018,0.014,0.080,0xc69363,0.004,0.010,0.062,1.15); // thumb/fingers wrap
+    g.rotation.z=0.32; g.rotation.x=-0.06; g.rotation.y=0.14;
+    mk(0.062,0.012,0.235,0x7a7f87,0.000,0.030,-0.122); // broad main blade
+    mk(0.042,0.006,0.215,0xb6bcc4,0.000,0.036,-0.114); // blade highlight
+    mk(0.024,0.010,0.070,0x676b72,0.000,0.026,-0.228); // tip taper
+    mk(0.056,0.020,0.022,0x1a1b1f,0.000,0.004,-0.004); // guard
+    mk(0.034,0.062,0.130,0x111214,0.000,-0.020,0.096); // handle slab
+    mk(0.024,0.048,0.120,0x2a2c31,0.000,-0.012,0.098); // grip insert
+    mk(0.016,0.010,0.020,0x50545c,0.000,0.012,0.030); // rivet 1
+    mk(0.016,0.010,0.020,0x50545c,0.000,0.000,0.074); // rivet 2
+    mk(0.016,0.010,0.020,0x50545c,0.000,-0.012,0.118); // rivet 3
+    mk(0.040,0.016,0.024,0x0f1012,0.000,-0.048,0.162); // pommel
+    mk(0.050,0.082,0.092,0x2d2c2d,-0.070,-0.078,0.110,0.34); // sleeve
+    mk(0.054,0.056,0.094,0xc69363,-0.020,-0.034,0.092,0.24); // hand
+    mk(0.020,0.016,0.078,0xc69363,0.010,0.004,0.056,1.00); // thumb
   } else {
     mk(0.048,0.092,0.200,0x222222, 0, 0, 0);
     mk(0.038,0.108,0.072,0x1a1a1a, 0,-0.094,0.054,0.28);
     mk(0.026,0.016,0.155,0x111111, 0, 0.046,-0.150);
   }
 
+  if(gameMode==='bomb'){
+    const bombPack=new THREE.Group();
+    const packBody=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.12,0.06),mat(0x2a2d31));
+    const packFlap=new THREE.Mesh(new THREE.BoxGeometry(0.11,0.03,0.065),mat(0x394047));
+    packFlap.position.y=0.058;
+    const packLight=new THREE.Mesh(new THREE.BoxGeometry(0.028,0.02,0.01),new THREE.MeshBasicMaterial({color:0xffd860}));
+    packLight.position.set(0,0.01,0.036);
+    bombPack.add(packBody); bombPack.add(packFlap); bombPack.add(packLight);
+    bombPack.position.set(-0.34,-0.18,-0.10);
+    bombPack.rotation.z=-0.22;
+    bombPack.visible=false;
+    g.add(bombPack);
+    g.userData.bombPack=bombPack;
+  }
   if(wk!=='knife') addHands();
-  g.position.set(wk==='knife'?0.27:0.22, wk==='knife'?-0.21:-0.22, wk==='knife'?-0.28:-0.35);
+  g.position.set(wk==='knife'?0.24:0.22, wk==='knife'?-0.18:-0.22, wk==='knife'?-0.22:-0.35);
   camera.add(g); gunModel=g;
+}
+function updateBombCarrierVisuals(){
+  for(const bot of bots){
+    if(bot.mesh?.userData?.bombPack){
+      bot.mesh.userData.bombPack.visible=gameMode==='bomb'&&bot.alive&&bot.team==='attack'&&bot.id===bombCarrierBotId;
+    }
+  }
+  if(gunModel?.userData?.bombPack){
+    const shouldShow=gameMode==='bomb'&&playerTeam==='attack'&&playerHasBomb&&playerAlive;
+    gunModel.userData.bombPack.visible=shouldShow;
+    playerBombPackVisible=shouldShow;
+  }
 }
 
 function mat(c){return new THREE.MeshLambertMaterial({color:c});}
@@ -718,6 +984,93 @@ function buildMap(mode='match'){
     const testLight=new THREE.PointLight(0xf0c040,1.2,28);
     testLight.position.set(0,4,0);
     addToMap(testLight);
+    return;
+  }
+
+  if(mode==='bomb'){
+    scene.background=new THREE.Color(0x14161e);
+    scene.fog=new THREE.FogExp2(0x14161e,0.0085);
+
+    const floor=new THREE.Mesh(new THREE.PlaneGeometry(260,260),mat(0x23232d));
+    floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; addToMap(floor);
+    const ceil=new THREE.Mesh(new THREE.PlaneGeometry(260,260),mat(0x101119));
+    ceil.rotation.x=Math.PI/2; ceil.position.y=13; addToMap(ceil);
+
+    const wallMat=mat(0x2b2c36), coverMat=mat(0x4b4d5a), crateMat=mat(0x67563a), laneMat=mat(0x3b3d48);
+    solid([132,12,2], [0,6, 66], wallMat);
+    solid([132,12,2], [0,6,-66], wallMat);
+    solid([2,12,132], [66,6,0], wallMat);
+    solid([2,12,132], [-66,6,0], wallMat);
+
+    // Echo-style backbone: T spawn -> T mid -> Mid -> CT mid -> CT spawn
+    solid([26,3.5,2],[0,1.75,44],wallMat);
+    solid([12,6,18],[-26,3,18],wallMat);
+    solid([12,6,18],[26,3,18],wallMat);
+    solid([16,6,26],[-20,3,-2],wallMat);
+    solid([16,6,26],[20,3,-2],wallMat);
+    solid([10,6,16],[-18,3,-30],wallMat);
+    solid([10,6,16],[18,3,-30],wallMat);
+    solid([24,3.5,2],[0,1.75,-44],wallMat);
+
+    // Mid blockers like the reference layout
+    solid([22,6,10],[-25,3,6],wallMat);
+    solid([22,6,10],[25,3,6],wallMat);
+    solid([20,6,12],[-25,3,-12],wallMat);
+    solid([20,6,12],[25,3,-12],wallMat);
+    solid([14,4,10],[-8,2,28],coverMat);
+    solid([14,4,10],[8,2,28],coverMat);
+    solid([14,4,10],[-8,2,-28],coverMat);
+    solid([14,4,10],[8,2,-28],coverMat);
+
+    // A long / B long cover pockets
+    solid([8,5,18],[-58,2.5,12],wallMat);
+    solid([8,5,18],[58,2.5,12],wallMat);
+    solid([10,5,12],[-54,2.5,-2],wallMat);
+    solid([10,5,12],[54,2.5,-2],wallMat);
+
+    // Short-route cover
+    solid([8,4,8],[-36,2,-34],coverMat);
+    solid([8,4,8],[36,2,-34],coverMat);
+    solid([8,4,8],[-24,2,-20],coverMat);
+    solid([8,4,8],[24,2,-20],coverMat);
+
+    // Spawn pads
+    const tSpawn=new THREE.Mesh(new THREE.PlaneGeometry(22,12),new THREE.MeshLambertMaterial({color:0x5e8448,transparent:true,opacity:0.8}));
+    tSpawn.rotation.x=-Math.PI/2; tSpawn.position.set(0,0.05,56); addToMap(tSpawn);
+    const ctSpawn=new THREE.Mesh(new THREE.PlaneGeometry(22,12),new THREE.MeshLambertMaterial({color:0x5e8448,transparent:true,opacity:0.8}));
+    ctSpawn.rotation.x=-Math.PI/2; ctSpawn.position.set(0,0.05,-56); addToMap(ctSpawn);
+
+    // Lane labels / site markers
+    [
+      [-53,0.7,16,0xffa45a], [53,0.7,16,0x5ab8ff], [0,0.7,22,0xdddddd],
+      [0,0.7,0,0xdddddd], [0,0.7,-22,0xdddddd], [0,0.7,-44,0xdddddd]
+    ].forEach(([x,y,z,col])=>{
+      const p=new THREE.PointLight(col,0.7,16);
+      p.position.set(x,y,z); addToMap(p);
+    });
+
+    for(const [id,site] of Object.entries(BOMB_SITES)){
+      const pad=new THREE.Mesh(new THREE.PlaneGeometry(site.size.x,site.size.y),new THREE.MeshLambertMaterial({color:id==='A'?0x4f2d1c:0x1d3652,transparent:true,opacity:0.72}));
+      pad.rotation.x=-Math.PI/2;
+      pad.position.copy(site.center);
+      addToMap(pad);
+      const plantBox=new THREE.Mesh(new THREE.PlaneGeometry(site.size.x-1.4,site.size.y-1.4),new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.08}));
+      plantBox.rotation.x=-Math.PI/2;
+      plantBox.position.copy(site.center);
+      addToMap(plantBox);
+      const outline=new THREE.Mesh(new THREE.EdgesGeometry(new THREE.BoxGeometry(site.size.x,0.2,site.size.y)),new THREE.LineBasicMaterial({color:site.color}));
+      outline.position.set(site.center.x,0.11,site.center.z);
+      addToMap(outline);
+      const beacon=new THREE.PointLight(site.color,1.2,28);
+      beacon.position.set(site.center.x,3.2,site.center.z);
+      addToMap(beacon);
+    }
+
+    [[-48,6,10],[48,6,10],[-6,6,36],[6,6,-36],[0,8,0]].forEach(([x,y,z],i)=>{
+      const cols=[0xff8a55,0x5ac0ff,0xffffff,0xffd35a,0x7f8cff];
+      const pl=new THREE.PointLight(cols[i],1.1,34);
+      pl.position.set(x,y,z); addToMap(pl);
+    });
     return;
   }
 
@@ -803,19 +1156,41 @@ function buildMap(mode='match'){
     sl(-8,22);
   })();
   if(mode==='bomb'){
-    const site=new THREE.Group();
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(3.1,0.12,10,42),new THREE.MeshBasicMaterial({color:0x44c0ff}));
-    ring.rotation.x=Math.PI/2;
-    ring.position.copy(bombSitePos);
-    site.add(ring);
-    const pad=new THREE.Mesh(new THREE.CylinderGeometry(2.45,2.45,0.08,28),new THREE.MeshLambertMaterial({color:0x18384c,transparent:true,opacity:0.55}));
-    pad.position.copy(bombSitePos);
-    site.add(pad);
-    const beacon=new THREE.PointLight(0x44c0ff,1.1,16);
-    beacon.position.set(bombSitePos.x,1.3,bombSitePos.z);
-    site.add(beacon);
-    bombSiteMesh=site;
-    addToMap(site);
+    const root=new THREE.Group();
+    [['A',0xffa45a],['B',0x5ab8ff]].forEach(([id,col])=>{
+      const pos=BOMB_SITES[id];
+      const site=new THREE.Group();
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(3.1,0.12,10,42),new THREE.MeshBasicMaterial({color:col}));
+      ring.rotation.x=Math.PI/2;
+      ring.position.copy(pos);
+      site.add(ring);
+      const pad=new THREE.Mesh(new THREE.CylinderGeometry(2.45,2.45,0.08,28),new THREE.MeshLambertMaterial({color:id==='A'?0x4c2d18:0x18384c,transparent:true,opacity:0.55}));
+      pad.position.copy(pos);
+      site.add(pad);
+      const beacon=new THREE.PointLight(col,1.1,16);
+      beacon.position.set(pos.x,1.3,pos.z);
+      site.add(beacon);
+      const bar1=new THREE.Mesh(new THREE.BoxGeometry(0.18,1.2,0.18),new THREE.MeshLambertMaterial({color:col}));
+      const bar2=new THREE.Mesh(new THREE.BoxGeometry(0.72,0.18,0.18),new THREE.MeshLambertMaterial({color:col}));
+      if(id==='A'){
+        bar1.position.set(pos.x-0.22,0.75,pos.z);
+        const bar1b=bar1.clone(); bar1b.position.x=pos.x+0.22; site.add(bar1b);
+        bar2.position.set(pos.x,1.05,pos.z); site.add(bar2);
+      } else {
+        const spine=new THREE.Mesh(new THREE.BoxGeometry(0.18,1.2,0.18),new THREE.MeshLambertMaterial({color:col}));
+        spine.position.set(pos.x-0.22,0.75,pos.z); site.add(spine);
+        const top=new THREE.Mesh(new THREE.BoxGeometry(0.62,0.18,0.18),new THREE.MeshLambertMaterial({color:col}));
+        top.position.set(pos.x+0.05,1.10,pos.z); site.add(top);
+        const mid=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.18,0.18),new THREE.MeshLambertMaterial({color:col}));
+        mid.position.set(pos.x+0.02,0.74,pos.z); site.add(mid);
+        const bot=new THREE.Mesh(new THREE.BoxGeometry(0.62,0.18,0.18),new THREE.MeshLambertMaterial({color:col}));
+        bot.position.set(pos.x+0.05,0.38,pos.z); site.add(bot);
+      }
+      if(id==='A') site.add(bar1);
+      root.add(site);
+    });
+    bombSiteMesh=root;
+    addToMap(root);
   }
 }
 
@@ -911,10 +1286,21 @@ const SPAWN_CANDIDATES=[
 
 function getPlayerSpawnPos(existingPositions=[]){
   if(gameMode==='test') return {x:0,z:8};
+  if(gameMode==='bomb'){
+    const pool=playerTeam==='attack'?BOMB_ATTACK_SPAWNS:BOMB_DEFEND_SPAWNS;
+    return pickSpawnFromPool(pool,existingPositions);
+  }
   return getSpawnPos(PLAYER_R,existingPositions);
 }
 function getBotSpawnPos(bot, existingPositions=[]){
   if(gameMode==='test' && bot.passive) return {x:0,z:-6};
+  if(gameMode==='bomb'){
+    const teamPool=bot.team==='attack'?BOMB_ATTACK_SPAWNS:BOMB_DEFEND_SPAWNS;
+    const idx=Math.min(teamPool.length-1,bot.teamSlot||0);
+    const preferred=teamPool[idx];
+    const occupiedClose=existingPositions.some(ep=>Math.hypot(preferred.x-ep.x,preferred.z-ep.z)<5);
+    return occupiedClose?pickSpawnFromPool(teamPool,existingPositions):preferred;
+  }
   return getSpawnPos(0.4,existingPositions);
 }
 
@@ -953,11 +1339,25 @@ class Bot{
     this.id=id; this.name=rndBotName();
     this.kills=0; this.deaths=0;
     this.hp=BOT_HP; this.alive=false;
+    this.team=null; this.teamSlot=0;
     this.respawnTimer=0;
     this.color=BOT_COLORS[id%BOT_COLORS.length];
     this.weaponKey=BOT_WEAPON_KEYS[~~(Math.random()*BOT_WEAPON_KEYS.length)];
     this.lastShot=0; this.shootCooldown=1200+Math.random()*600;
     this.state='patrol'; this.patrolTarget=new THREE.Vector3();
+    this._bombAction=0;
+    this.role='support';
+    this.assists=0;
+    this.lastKnownEnemyPos=null;
+    this.memoryTimer=0;
+    this.reactionUntil=0;
+    this.heardPos=null;
+    this.heardTimer=0;
+    this.lastSeenTarget=null;
+    this.stuckTimer=0;
+    this.unstuckTarget=null;
+    this.prevPos=new THREE.Vector3();
+    this.damageLog={};
 
     this.target=null; // Bot or player object
     this.mesh=this._buildMesh();
@@ -1069,6 +1469,16 @@ class Bot{
     rHand.position.set(0,-0.66,0.06); rArmGrp.add(rHand);
     g.add(rArmGrp);
     g.userData.rArmGrp=rArmGrp;
+    const pack=new THREE.Group();
+    const packBody=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.30,0.12),new THREE.MeshLambertMaterial({color:0x2c2f34}));
+    packBody.position.set(0,0.80,-0.20); pack.add(packBody);
+    const packTop=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.08,0.13),new THREE.MeshLambertMaterial({color:0x424851}));
+    packTop.position.set(0,0.93,-0.20); pack.add(packTop);
+    const packLamp=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.04,0.01),new THREE.MeshBasicMaterial({color:0xffd860}));
+    packLamp.position.set(0,0.80,-0.135); pack.add(packLamp);
+    pack.visible=false;
+    g.add(pack);
+    g.userData.bombPack=pack;
 
 
     // Gun in hands — model matches currentWeapon
@@ -1104,36 +1514,71 @@ class Bot{
   spawn(existingPositions){
     const sp=getBotSpawnPos(this, existingPositions);
     this.mesh.position.set(sp.x,0,sp.z);
+    this.prevPos.set(sp.x,0,sp.z);
     this.hp=BOT_HP; this.alive=true; this.mesh.visible=true;
+    this._bombAction=0;
+    this.stuckTimer=0;
+    this.unstuckTarget=null;
     scene.add(this.mesh);
     this._setPatrol();
     return {x:sp.x,z:sp.z};
   }
   _setPatrol(){
+    if(gameMode==='bomb'){
+      if(this.team==='defend'){
+        this.patrolTarget.copy(getDefendAnchor(this));
+        return;
+      }
+      const attackTarget=getAttackAdvanceTarget(this);
+      this.patrolTarget.copy(attackTarget||new THREE.Vector3(0,0,22));
+      return;
+    }
     const a=Math.random()*Math.PI*2, d=10+Math.random()*22;
     this.patrolTarget.set(Math.cos(a)*d,0,Math.sin(a)*d);
   }
   takeDamage(dmg,isHead,killerName){
+    if(killerName) this.damageLog[killerName]=performance.now();
     const shownDamage=isHead?Math.max(1,this.hp):Math.max(1,Math.min(this.hp,dmg));
     if(killerName===playerName) spawnDamageNumber(this,shownDamage,isHead);
     if(isHead) this.hp=0; else this.hp-=dmg;
     if(this.hp<=0) this.die(killerName,isHead);
   }
   die(killerName,isHead){
+    const wasBombCarrier=gameMode==='bomb'&&this.team==='attack'&&this.id===bombCarrierBotId;
+    const deathPos=this.mesh.position.clone();
     this.alive=false; this.mesh.visible=false; scene.remove(this.mesh);
+    if(wasBombCarrier){
+      bombDroppedPos=deathPos;
+      bombCarrierBotId=-1;
+      assignBombCarrier();
+    }
     this.deaths++;
-    this.respawnTimer=gameMode==='test'&&this.passive?0:BOT_RESPAWN_DELAY;
+    this.respawnTimer=gameMode==='bomb'?1e9:(gameMode==='test'&&this.passive?0:BOT_RESPAWN_DELAY);
     this._invuln=0;
     showKillFeed(killerName,this.name,isHead,killerName===playerName);
-    spawnHealthDrop(this.mesh.position.clone());
     if(killerName===playerName){
-      playerKills++; playerMoney=Math.min(9999,playerMoney+300);
+      playerKills++;
+      if(gameMode==='bomb') playerMoney=Math.min(16000,playerMoney+BOMB_KILL_MONEY);
+      else playerMoney=Math.min(9999,playerMoney+300);
       flashKill(); sndKill(); checkKillStreak();
       if(isHead){ showHeadshotLabel(); sndHeadshot(); }
     } else {
       const kb=bots.find(b=>b.name===killerName);
       if(kb) kb.kills++;
     }
+    const assistWindow=8000;
+    const now=performance.now();
+    const assisterName=Object.entries(this.damageLog)
+      .filter(([name,time])=>name!==killerName && now-time<assistWindow)
+      .sort((a,b)=>b[1]-a[1])[0]?.[0];
+    if(assisterName){
+      if(assisterName===playerName) playerAssists++;
+      else {
+        const ab=bots.find(b=>b.name===assisterName);
+        if(ab) ab.assists=(ab.assists||0)+1;
+      }
+    }
+    this.damageLog={};
     updateHUD(); updateScoreboard();
     if(gameMode==='test'&&this.passive){
       this.spawn(getOccupiedBotPositions());
@@ -1151,11 +1596,22 @@ class Bot{
       if(this._rArmGrp) this._rArmGrp.rotation.x+=(0.12-this._rArmGrp.rotation.x)*Math.min(1,dt*8);
       return;
     }
+    this.memoryTimer=Math.max(0,this.memoryTimer-dt);
+    this.heardTimer=Math.max(0,this.heardTimer-dt);
+    if(gameMode==='bomb'&&isBombBuyPhase()){
+      if(this.target&&this.target!=='player'&&!this.target.alive) this.target=null;
+      return;
+    }
     const mp=this.mesh.position;
     this._patrolTick-=dt;
     if(this._patrolTick<=0){
       this._patrolTick=0.55+Math.random()*0.7;
       this.target=this._pickTarget();
+    }
+    if(gameMode==='bomb' && hasFreshEnemyNoise(this.team) && mp.distanceTo(lastHeardNoisePos)<48){
+      this.heardPos=lastHeardNoisePos.clone();
+      this.heardTimer=1.7;
+      if(!this.target) this.patrolTarget.copy(lastHeardNoisePos);
     }
     botTryPickup(this);
 
@@ -1163,10 +1619,52 @@ class Bot{
     if(this.target){
       if(this.target==='player'){ if(playerAlive) targetPos=camera.position.clone(); }
       else if(this.target.alive) targetPos=this.target.mesh.position.clone().add(new THREE.Vector3(0,1.3,0));
+      if(targetPos){
+        this.lastKnownEnemyPos=targetPos.clone();
+        this.memoryTimer=3.4;
+      }
+    } else if(this.memoryTimer>0 && this.lastKnownEnemyPos){
+      targetPos=this.lastKnownEnemyPos.clone();
+    } else if(this.heardTimer>0 && this.heardPos){
+      targetPos=this.heardPos.clone();
+    }
+    if(gameMode==='bomb'){
+      if(!bombPlanted && this.team==='attack' && this.id===bombCarrierBotId && !targetPos){
+        targetPos=getAttackAdvanceTarget(this);
+      } else if(!bombPlanted && this.team==='attack' && !targetPos){
+        targetPos=getAttackAdvanceTarget(this);
+      } else if(bombPlanted && this.team==='defend' && !targetPos){
+        const knownSite=plantedBombSite||defendersKnownSite||getDefenderSearchSite(this);
+        targetPos=BOMB_SITES[knownSite].center.clone();
+      } else if(bombPlanted && this.team==='attack' && !targetPos){
+        const holdOffsets=plantedBombSite==='A'
+          ? [new THREE.Vector3(-7,0,10),new THREE.Vector3(10,0,2),new THREE.Vector3(-14,0,-4),new THREE.Vector3(-24,0,14),new THREE.Vector3(-4,0,-10)]
+          : [new THREE.Vector3(7,0,10),new THREE.Vector3(-10,0,2),new THREE.Vector3(14,0,-4),new THREE.Vector3(24,0,14),new THREE.Vector3(4,0,-10)];
+        const holdBase=BOMB_SITES[plantedBombSite].plant.clone();
+        targetPos=holdBase.add(holdOffsets[this.teamSlot%holdOffsets.length]);
+      }
+    }
+    if(this.unstuckTarget){
+      if(mp.distanceTo(this.unstuckTarget)<3){
+        this.unstuckTarget=null;
+        this.stuckTimer=0;
+      } else if(!this.target){
+        targetPos=this.unstuckTarget.clone();
+      }
     }
     if(!targetPos){this._setPatrol();this.target=null;}
     const dist=targetPos?mp.distanceTo(targetPos):999;
-    if(targetPos) this.state=dist<40?(dist<14?'shoot':'chase'):'patrol';
+    if(gameMode==='bomb'&&!this.target&&targetPos){
+      const defendBomb=bombPlanted&&this.team==='defend';
+      const holdAttack=bombPlanted&&this.team==='attack';
+      const defendSetup=!bombPlanted&&this.team==='defend';
+      const attackAdvance=!bombPlanted&&this.team==='attack';
+      if(defendBomb) this.state=dist<6?'hold':'chase';
+      else if(defendSetup) this.state=dist<4?'hold':'chase';
+      else if(attackAdvance) this.state=dist<5?'hold':'chase';
+      else if(holdAttack) this.state=dist<9?'hold':'chase';
+      else this.state='chase';
+    } else if(targetPos) this.state=dist<40?(dist<14?'shoot':'chase'):'patrol';
     else this.state='patrol';
     const move=new THREE.Vector3();
     const nt=performance.now()*0.0022;
@@ -1177,8 +1675,19 @@ class Bot{
     } else if(this.state==='chase'&&targetPos){
       const dir=targetPos.clone().sub(mp).normalize();
       const zz=new THREE.Vector3(-dir.z,0,dir.x);
-      move.copy(dir).multiplyScalar(BOT_SPEED*dt);
-      move.addScaledVector(zz,Math.sin(nt+this.id*1.3)*BOT_SPEED*0.35*dt);
+      const inAttackSpawn=gameMode==='bomb'&&this.team==='attack'&&!bombPlanted&&mp.z>38;
+      move.copy(dir).multiplyScalar(BOT_SPEED*dt*(inAttackSpawn?1.15:1));
+      if(!inAttackSpawn){
+        move.addScaledVector(zz,Math.sin(nt+this.id*1.3)*BOT_SPEED*0.35*dt);
+      }
+    } else if(this.state==='hold'&&targetPos){
+      const toT=targetPos.clone().sub(mp);
+      if(toT.length()>7){
+        move.copy(toT.normalize()).multiplyScalar(BOT_SPEED*0.75*dt);
+      } else {
+        const strafe=new THREE.Vector3(-toT.z,0,toT.x).normalize();
+        move.copy(strafe).multiplyScalar(BOT_SPEED*0.28*dt*Math.sin(nt+this.id*0.7));
+      }
     } else if(this.state==='shoot'&&targetPos){
       const toT=targetPos.clone().sub(mp).normalize();
       const strafe=new THREE.Vector3(-toT.z,0,toT.x);
@@ -1186,14 +1695,39 @@ class Bot{
       if(dist>14) move.addScaledVector(toT,BOT_SPEED*0.4*dt);
       else if(dist<5) move.addScaledVector(toT,-BOT_SPEED*0.3*dt);
       const wDef=WEAPONS[this.weaponKey]||WEAPONS.glock;
-      const cd=wDef.auto?380:this.shootCooldown;
+      const cd=dist<10?(wDef.auto?260:420):dist<22?(wDef.auto?360:560):(wDef.auto?520:760);
       const now=performance.now();
-      if(now-this.lastShot>cd){this._shoot(targetPos,dist);this.lastShot=now;}
+      if(now>this.reactionUntil && now-this.lastShot>cd){this._shoot(targetPos,dist);this.lastShot=now;}
     }
+    const beforeMove=mp.clone();
     mp.x+=move.x; mp.z+=move.z; mp.y=0;
     const bp=new THREE.Vector3(mp.x,1.7,mp.z);
     resolveCollision(bp,0.38,1.6);
     mp.x=bp.x; mp.z=bp.z;
+    const movedDist=Math.hypot(mp.x-beforeMove.x,mp.z-beforeMove.z);
+    if(gameMode==='bomb' && this.team==='attack' && !bombPlanted && targetPos && !this.target){
+      if(movedDist<0.03 && dist>6){
+        this.stuckTimer+=dt;
+        if(this.stuckTimer>0.55){
+          const toTarget=targetPos.clone().sub(mp).setY(0);
+          if(toTarget.lengthSq()>0.01){
+            toTarget.normalize();
+            const side=(this.teamSlot%2===0)?1:-1;
+            const sidestep=new THREE.Vector3(-toTarget.z*side,0,toTarget.x*side).multiplyScalar(8+this.teamSlot*0.6);
+            const escape=mp.clone().add(sidestep);
+            escape.x=Math.max(-60,Math.min(60,escape.x));
+            escape.z=Math.max(-60,Math.min(60,escape.z));
+            this.unstuckTarget=escape;
+          }
+          this.stuckTimer=0;
+        }
+      } else {
+        this.stuckTimer=0;
+      }
+    } else {
+      this.stuckTimer=0;
+    }
+    this.prevPos.copy(mp);
     if(targetPos) this.mesh.lookAt(targetPos.x,mp.y,targetPos.z);
     if(this._rArmGrp){
       const aimTgt=this.state==='shoot'?-1.4:0.15;
@@ -1203,21 +1737,32 @@ class Bot{
   _pickTarget(){
     if(this.passive) return null;
     let best=null, bestDist=Infinity;
+    const senseRange=gameMode==='bomb'?70:28;
     // Consider player
-    if(playerAlive){
+    if(playerAlive && !isBombFriendly(this.team,playerTeam)){
       const d=this.mesh.position.distanceTo(camera.position);
-      if(d<bestDist){bestDist=d;best='player';}
+      if(d<bestDist && d<senseRange){bestDist=d;best='player';}
     }
     // Consider bots
     for(const b of bots){
       if(b===this||!b.alive) continue;
+      if(isBombFriendly(this.team,b.team)) continue;
       const d=this.mesh.position.distanceTo(b.mesh.position);
-      if(d<bestDist && d<28){bestDist=d;best=b;}
+      if(d<bestDist && d<senseRange){bestDist=d;best=b;}
     }
     // 30% chance to retarget randomly even if player is close (makes bots fight each other more)
-    if(best==='player'&&Math.random()<0.3){
-      const botTargets=bots.filter(b=>b!==this&&b.alive&&this.mesh.position.distanceTo(b.mesh.position)<30);
+    if(best==='player'&&Math.random()<0.18){
+      const botTargets=bots.filter(b=>
+        b!==this &&
+        b.alive &&
+        !isBombFriendly(this.team,b.team) &&
+        this.mesh.position.distanceTo(b.mesh.position)<senseRange
+      );
       if(botTargets.length) return botTargets[~~(Math.random()*botTargets.length)];
+    }
+    if(best && best!==this.lastSeenTarget){
+      this.lastSeenTarget=best;
+      this.reactionUntil=performance.now()+(this.role==='entry'?110:170)+Math.random()*110;
     }
     return best;
   }
@@ -1225,9 +1770,11 @@ class Bot{
     if(this.passive) return;
     const from=this.mesh.position.clone().add(new THREE.Vector3(0,1.45,0));
     const wDef=WEAPONS[this.weaponKey]||WEAPONS.glock;
+    registerBotNoise(this.mesh.position,this.team,'gun');
     const d=targetPos.clone().sub(from).normalize();
-    d.x+=(Math.random()-0.5)*wDef.spread*2.2;
-    d.z+=(Math.random()-0.5)*wDef.spread*2.2;
+    const rangeSpread=dist<10?1.2:dist<22?0.9:0.6;
+    d.x+=(Math.random()-0.5)*wDef.spread*2.2*rangeSpread;
+    d.z+=(Math.random()-0.5)*wDef.spread*2.2*rangeSpread;
     d.normalize();
     const ray=new THREE.Raycaster(from,d);
     const walls=solidObjects.map(o=>o.mesh);
@@ -1238,8 +1785,11 @@ class Bot{
     const acc=Math.max(0.22,1-dist/maxR);
     if(Math.random()>acc) return;
     const dmg=Math.round(getWeaponDamageAtDistance(wDef,dist,false)*0.72);
-    if(this.target==='player') takeDamage(dmg, this.mesh.position.clone(), this);
-    else if(this.target&&this.target.alive) this.target.takeDamage(dmg,false,this.name);
+    if(this.target==='player'){
+      if(!isBombFriendly(this.team,playerTeam)) takeDamage(dmg, this.mesh.position.clone(), this);
+    } else if(this.target&&this.target.alive&&!isBombFriendly(this.team,this.target.team)){
+      this.target.takeDamage(dmg,false,this.name);
+    }
   }
 }
 
@@ -1257,6 +1807,7 @@ function buildHealthDropMesh(){
   return g;
 }
 function spawnHealthDrop(pos){
+  if(gameMode==='bomb') return;
   const mesh=buildHealthDropMesh();
   mesh.position.set(pos.x,0.45,pos.z);
   scene.add(mesh);
@@ -1419,6 +1970,7 @@ function doShoot(){
   if(ammoMag<=0){startReload();return;}
   ammoMag--;
   updateHUD(); showMuzzle(); gunRecoil(); sndShoot();
+  registerBotNoise(camera.position,playerTeam,'gun');
   if(ammoMag<=0&&ammoReserve>0) setTimeout(startReload,280);
 
   // Recoil buildup per shot
@@ -1444,6 +1996,7 @@ function doShoot(){
       const dmg=getWeaponDamageAtDistance(W,dist,isHead);
       for(const bot of bots){
         if(!bot.alive) continue;
+        if(isBombFriendly(playerTeam,bot.team)) continue;
         if(bot.mesh===hit.object||bot.mesh.children.includes(hit.object)){
           spawnTracer(tracerFrom,hit.point);
           spawnParticles(hit.point,isHead?0xff2200:0xff8844);
@@ -1516,7 +2069,10 @@ function showAttackIndicator(attackerPos){
 }
 function takeDamage(dmg,attackerPos,attackerBot){
   if(spawnInvuln>0) return;
-  if(attackerBot) lastHitBy=attackerBot;
+  if(attackerBot){
+    lastHitBy=attackerBot;
+    playerDamageLog[attackerBot.name]=performance.now();
+  }
   if(playerShield>0){
     const absorbed=Math.min(playerShield,dmg);
     playerShield=Math.max(0,playerShield-absorbed);
@@ -1530,11 +2086,29 @@ function takeDamage(dmg,attackerPos,attackerBot){
 function playerDie(){
   playerAlive=false; playerDeaths++; health=0; updateHUD();
   clearGlockBurst();
-  playerRespawnTimer=PLAYER_RESPAWN;
+  playerRespawnTimer=gameMode==='bomb'?1e9:PLAYER_RESPAWN;
   killStreak=0; recentKillTimes=[]; sndDeath();
+  spectatorRise=0;
+  if(gameMode==='bomb'&&playerTeam==='attack'&&playerHasBomb){
+    bombEquipped=false;
+    playerHasBomb=false;
+    bombDroppedPos=camera.position.clone();
+    assignBombCarrier();
+  }
+  if(gunModel) gunModel.visible=false;
   if(lastHitBy&&lastHitBy.alive){lastHitBy.kills++;showKillFeed(lastHitBy.name,playerName,false,false);updateScoreboard();}
+  const assistWindow=8000;
+  const now=performance.now();
+  const assisterName=Object.entries(playerDamageLog)
+    .filter(([name,time])=>name!==lastHitBy?.name && now-time<assistWindow)
+    .sort((a,b)=>b[1]-a[1])[0]?.[0];
+  if(assisterName){
+    const ab=bots.find(b=>b.name===assisterName);
+    if(ab) ab.assists=(ab.assists||0)+1;
+  }
+  playerDamageLog={};
   lastHitBy=null;
-  setStatus('YOU DIED\nRESPAWNING...');
+  setStatus(gameMode==='bomb'?'YOU DIED · SPECTATING':'YOU DIED\nRESPAWNING...');
   exitScope();
   updateScoreboard();
 }
@@ -1544,7 +2118,9 @@ function doPlayerRespawn(){
   camera.position.set(sp.x,1.7,sp.z);
   health=playerMaxHp; playerAlive=true;
   playerVelY=0; playerVelX=0; playerVelZ=0; onGround=true;
+  spectatorRise=0;
   isReloading=false;
+  if(gunModel) gunModel.visible=true;
   document.getElementById('reload-bar').style.display='none';
   // Keep weapon unless it was mg
   updateHUD(); setStatus('');
@@ -1559,77 +2135,194 @@ function getOccupiedPositions(){
 
 function resetBombModeState(){
   bombPlanted=false; bombExploded=false; bombDefused=false;
-  bombTimer=0; bombActionProgress=0; bombActionType=''; bombRoundResult='';
+  bombTimer=0; bombActionProgress=0; bombActionType=''; bombRoundResult=''; plantedBombSite=''; bombEquipped=false; playerHasBomb=false;
+  bombCarrierBotId=-1;
+  bombDroppedPos=null;
+  defendersKnownSite='';
+  bombExplosionFx=[];
   if(plantedBombMesh){ scene.remove(plantedBombMesh); plantedBombMesh=null; }
   clearObjectivePrompt();
+  updateBombProgressBar();
 }
 function endBombRound(result){
   if(!gameRunning||bombRoundResult) return;
   bombRoundResult=result;
+  let winner=null;
+  if(result==='BOMB EXPLODED'||result==='DEFENDERS ELIMINATED') winner='attack';
+  else if(result==='BOMB DEFUSED'||result==='ROUND OVER'||result==='ATTACKERS ELIMINATED') winner='defend';
+  if(winner==='attack'){
+    attackWins++;
+    playerMoney+=(playerTeam==='attack'?BOMB_WIN_MONEY:(result==='BOMB EXPLODED'?BOMB_PLANT_LOSS_MONEY:BOMB_LOSS_MONEY));
+  }
+  if(winner==='defend'){
+    defendWins++;
+    playerMoney+=(playerTeam==='defend'?BOMB_WIN_MONEY:(result==='BOMB DEFUSED'?BOMB_PLANT_LOSS_MONEY:BOMB_LOSS_MONEY));
+  }
+  playerMoney=Math.min(16000,playerMoney);
   setStatus(result);
-  setTimeout(()=>endGame(),900);
+  updateHUD(); updateScoreboard();
+  const roundsPlayed=attackWins+defendWins;
+  if(roundsPlayed===BOMB_SIDE_SWITCH_ROUND){
+    playerTeam=playerTeam==='attack'?'defend':'attack';
+    setTimeout(()=>{
+      if(gameRunning&&gameMode==='bomb'){
+        setStatus(`SIDES SWITCHED · YOU ARE ${playerTeam.toUpperCase()}`);
+      }
+    },700);
+  }
+  if(attackWins>=BOMB_WIN_TARGET || defendWins>=BOMB_WIN_TARGET || roundsPlayed>=BOMB_ROUND_LIMIT){
+    setTimeout(()=>endGame(),BOMB_ROUND_BREAK);
+  } else {
+    setTimeout(()=>{
+      if(gameRunning&&gameMode==='bomb'){
+        setStatus(`NEXT ROUND IN ${Math.ceil(BOMB_ROUND_BREAK/1000)}`);
+      }
+    },900);
+    setTimeout(()=>setupBombRound(),BOMB_ROUND_BREAK);
+  }
 }
 function updateBombMode(dt){
   if(gameMode!=='bomb'){
     clearObjectivePrompt();
+    updateBombProgressBar();
+    return;
+  }
+  if(bombPlanted){
+    bombTimer=Math.max(0,bombTimer-dt);
+    updateBombProgressBar();
+    const bombPos=plantedBombMesh?plantedBombMesh.position:BOMB_SITES[plantedBombSite].plant;
+    if(!defendersKnownSite){
+      for(const b of bots.filter(x=>x.alive&&x.team==='defend')){
+        const searchSite=getDefenderSearchSite(b);
+        const sitePos=BOMB_SITES[searchSite].center;
+        if(b.mesh.position.distanceTo(sitePos)<8){
+          defendersKnownSite=(searchSite===plantedBombSite)?searchSite:(searchSite==='A'?'B':'A');
+          break;
+        }
+      }
+    }
+    if(bombTimer<=0&&!bombExploded&&!bombDefused){
+      bombExploded=true;
+      spawnBombExplosionFX(bombPos);
+      sndBombExplode();
+      clearObjectivePrompt();
+      endBombRound('BOMB EXPLODED');
+      return;
+    }
+    const d=camera.position.distanceTo(bombPos);
+    if(playerAlive && d<2.4 && playerTeam==='defend'){
+      if(keys['Digit4']){
+        if(bombActionType!=='defuse'){bombActionType='defuse';bombActionProgress=0;}
+        bombActionProgress+=dt*1000;
+        const pct=Math.min(100,Math.round((bombActionProgress/BOMB_DEFUSE_TIME)*100));
+        showObjectivePrompt(`[ 4 ] DEFUSING ${pct}%`,'#9cf0a0','rgba(156,240,160,0.45)');
+        if(bombActionProgress>=BOMB_DEFUSE_TIME){
+          bombDefused=true;
+          if(plantedBombMesh){scene.remove(plantedBombMesh);plantedBombMesh=null;}
+          sndBombDefuse();
+          clearObjectivePrompt();
+          updateBombProgressBar();
+          endBombRound('BOMB DEFUSED');
+        }
+      } else {
+        bombActionType=''; bombActionProgress=0;
+        showObjectivePrompt('[ 4 ] HOLD TO DEFUSE','#9cf0a0','rgba(156,240,160,0.45)');
+      }
+    } else {
+      bombActionType=''; bombActionProgress=0;
+      clearObjectivePrompt();
+    }
+    const defuser=bots
+      .filter(b=>b.alive&&b.team==='defend')
+      .sort((a,b)=>a.mesh.position.distanceTo(bombPos)-b.mesh.position.distanceTo(bombPos))[0];
+    if(defuser && defuser.mesh.position.distanceTo(bombPos)<2.6 && canDefenderCommitDefuse(defuser,bombPos)){
+      defuser._bombAction=(defuser._bombAction||0)+dt*1000;
+      if(defuser._bombAction>=BOMB_DEFUSE_TIME){
+        bombDefused=true;
+        if(plantedBombMesh){scene.remove(plantedBombMesh);plantedBombMesh=null;}
+        sndBombDefuse();
+        clearObjectivePrompt();
+        updateBombProgressBar();
+        endBombRound('BOMB DEFUSED');
+      }
+    } else if(defuser){
+      defuser._bombAction=0;
+    }
     return;
   }
   if(!playerAlive){
     bombActionProgress=0; bombActionType='';
     clearObjectivePrompt();
+    updateBombProgressBar();
     return;
   }
-  if(bombPlanted){
-    bombTimer=Math.max(0,bombTimer-dt);
-    if(bombTimer<=0&&!bombExploded&&!bombDefused){
-      bombExploded=true;
-      clearObjectivePrompt();
-      endBombRound('BOMB EXPLODED');
-      return;
+  const aliveAttack=(playerAlive&&playerTeam==='attack'?1:0)+bots.filter(b=>b.alive&&b.team==='attack').length;
+  const aliveDefend=(playerAlive&&playerTeam==='defend'?1:0)+bots.filter(b=>b.alive&&b.team==='defend').length;
+  if(aliveAttack<=0){ endBombRound('ATTACKERS ELIMINATED'); return; }
+  if(aliveDefend<=0){ endBombRound('DEFENDERS ELIMINATED'); return; }
+  if((!playerHasBomb||playerTeam!=='attack'||!playerAlive) && bombCarrierBotId<0) assignBombCarrier();
+  const site=getActiveBombSite();
+  const botCarrier=getBombCarrierBot();
+  if(botCarrier){
+    if(bombDroppedPos && botCarrier.mesh.position.distanceTo(bombDroppedPos)<2.4){
+      bombDroppedPos=null;
     }
-    const bombPos=plantedBombMesh?plantedBombMesh.position:bombSitePos;
-    const d=camera.position.distanceTo(bombPos);
-    if(d<2.4){
-      if(keys['KeyE']){
-        if(bombActionType!=='defuse'){bombActionType='defuse';bombActionProgress=0;}
+    const botSite=!bombDroppedPos && isInsideBombSite(botCarrier.mesh.position,bombTargetSite);
+    const carrierClear=!hasEnemyNearSite('attack',bombTargetSite,14);
+    if(botSite && carrierClear){
+      botCarrier._bombAction=(botCarrier._bombAction||0)+dt*1000;
+      if(botCarrier._bombAction>=BOMB_PLANT_TIME){
+        bombPlanted=true;
+        plantedBombSite=bombTargetSite;
+        bombCarrierBotId=-1;
+        bombTimer=BOMB_TIMER_DURATION;
+        buildPlantedBombMesh(new THREE.Vector3(botCarrier.mesh.position.x,0.16,botCarrier.mesh.position.z));
+        sndBombPlant();
+        updateBombProgressBar();
+        setStatus(`BOMB PLANTED AT ${plantedBombSite}`);
+        setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&bombPlanted) setStatus(''); },700);
+        return;
+      }
+    } else {
+      botCarrier._bombAction=0;
+    }
+  }
+  if(playerTeam==='attack' && playerHasBomb && bombEquipped && site.inside){
+    const playerClear=!hasEnemyNearSite('attack',site.id,14);
+    if(keys['Digit4']){
+      if(bombActionType!=='plant'){bombActionType='plant';bombActionProgress=0;}
+      if(playerClear){
         bombActionProgress+=dt*1000;
-        const pct=Math.min(100,Math.round((bombActionProgress/BOMB_DEFUSE_TIME)*100));
-        showObjectivePrompt(`[ E ] DEFUSING ${pct}%`,'#9cf0a0','rgba(156,240,160,0.45)');
-        if(bombActionProgress>=BOMB_DEFUSE_TIME){
-          bombDefused=true;
-          if(plantedBombMesh){scene.remove(plantedBombMesh);plantedBombMesh=null;}
-          clearObjectivePrompt();
-          endBombRound('BOMB DEFUSED');
+        const pct=Math.min(100,Math.round((bombActionProgress/BOMB_PLANT_TIME)*100));
+        showObjectivePrompt(`[ 4 ] PLANTING ${site.id} ${pct}%`,'#8de','rgba(120,200,255,0.45)');
+        if(bombActionProgress>=BOMB_PLANT_TIME){
+          bombPlanted=true;
+          plantedBombSite=site.id;
+          bombEquipped=false;
+          bombActionType=''; bombActionProgress=0;
+          bombTimer=BOMB_TIMER_DURATION;
+          buildPlantedBombMesh(site.pos);
+          sndBombPlant();
+          updateBombProgressBar();
+          setStatus(`BOMB PLANTED AT ${site.id}`);
+          setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&bombPlanted) setStatus(''); },700);
         }
       } else {
-        bombActionType=''; bombActionProgress=0;
-        showObjectivePrompt('[ E ] HOLD TO DEFUSE','#9cf0a0','rgba(156,240,160,0.45)');
+        bombActionProgress=0;
+        showObjectivePrompt(`SITE ${site.id} NOT CLEAR`,'#ffb36b','rgba(255,179,107,0.45)');
       }
     } else {
       bombActionType=''; bombActionProgress=0;
-      clearObjectivePrompt();
+      showObjectivePrompt(`[ 4 ] HOLD TO PLANT AT SITE ${site.id}`);
     }
-    return;
-  }
-  const d=camera.position.distanceTo(bombSitePos);
-  if(d<3.4){
-    if(keys['KeyE']){
-      if(bombActionType!=='plant'){bombActionType='plant';bombActionProgress=0;}
-      bombActionProgress+=dt*1000;
-      const pct=Math.min(100,Math.round((bombActionProgress/BOMB_PLANT_TIME)*100));
-      showObjectivePrompt(`[ E ] PLANTING ${pct}%`,'#8de','rgba(120,200,255,0.45)');
-      if(bombActionProgress>=BOMB_PLANT_TIME){
-        bombPlanted=true;
-        bombActionType=''; bombActionProgress=0;
-        bombTimer=BOMB_TIMER_DURATION;
-        buildPlantedBombMesh(bombSitePos);
-        setStatus('BOMB PLANTED');
-        setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&bombPlanted) setStatus(''); },700);
-      }
-    } else {
-      bombActionType=''; bombActionProgress=0;
-      showObjectivePrompt('[ E ] HOLD TO PLANT BOMB');
-    }
+  } else if(playerTeam==='attack'){
+    bombActionType=''; bombActionProgress=0;
+    if(playerHasBomb && bombEquipped) showObjectivePrompt('[ 4 ] MOVE INSIDE SITE A OR B TO PLANT');
+    else if(playerHasBomb) showObjectivePrompt('[ 4 ] TAP TO EQUIP BOMB · [ G ] DROP');
+    else if(getNearbyBombCarrierForPlayer()) showObjectivePrompt('[ E ] TAKE BOMB FROM ALLY');
+    else if(bombDroppedPos && camera.position.distanceTo(bombDroppedPos)<2.4) showObjectivePrompt('[ 4 ] TAP TO PICK UP BOMB');
+    else if(bombDroppedPos) showObjectivePrompt('BOMB DROPPED');
+    else showObjectivePrompt('ALLY HAS THE BOMB');
   } else {
     bombActionType=''; bombActionProgress=0;
     clearObjectivePrompt();
@@ -1682,16 +2375,88 @@ function switchWeapon(wk){
   document.getElementById('reload-bar-fill').style.width='0%';
   buildGunModel(); updateHUD();
 }
+function setupBombRound(){
+  resetBombModeState();
+  matchTimeLeft=BOMB_ROUND_DURATION;
+  bombBuyLock=BOMB_BUY_PHASE;
+  bombDefendPattern=['2-1-2','3A-2B','2A-3B'][~~(Math.random()*3)];
+  health=playerMaxHp; playerShield=0; playerAlive=true;
+  playerDamageLog={};
+  playerVelY=0; playerVelX=0; playerVelZ=0; onGround=true;
+  clearGlockBurst();
+  const occupied=[];
+  const attackBotCount=BOMB_TEAM_SIZE-(playerTeam==='attack'?1:0);
+  bombTargetSite=Math.random()<0.5?'A':'B';
+  for(let i=0;i<bots.length;i++){
+    const bot=bots[i];
+    bot.team=i<attackBotCount?'attack':'defend';
+    bot.teamSlot=i<attackBotCount?i:i-attackBotCount;
+    bot.role=bot.team==='attack'
+      ? (bot.teamSlot===0?'entry':bot.teamSlot===1?'support':bot.teamSlot===2?'support':bot.teamSlot===3?'lurker':'support')
+      : (bot.teamSlot===0?'mid':bot.teamSlot<=2?'anchor':'rotate');
+    bot.name=(bot.team==='attack'?'ATK':'DEF')+'_'+(bot.teamSlot+1);
+    bot.hp=BOT_HP; bot.alive=true; bot.mesh.visible=true;
+    bot.assists=bot.assists||0;
+    bot.lastKnownEnemyPos=null; bot.memoryTimer=0; bot.heardPos=null; bot.heardTimer=0; bot.lastSeenTarget=null; bot.reactionUntil=0;
+    if(bot.mesh.parent!==scene) scene.add(bot.mesh);
+    const pos=bot.spawn(occupied);
+    occupied.push(pos);
+  }
+  const sp=getPlayerSpawnPos(occupied);
+  camera.position.set(sp.x,1.7,sp.z);
+  currentWeapon='glock'; slot1Key=null; slot2Key='glock'; activeSlot=2;
+  ammoMag=WEAPONS.glock.mag; ammoReserve=WEAPONS.glock.reserve;
+  if(playerTeam==='attack'){
+    const attackSidePool=['player',...bots.filter(b=>b.alive&&b.team==='attack').map(b=>b.id)];
+    const owner=attackSidePool[~~(Math.random()*attackSidePool.length)];
+    if(owner==='player'){
+      playerHasBomb=true;
+      bombCarrierBotId=-1;
+    } else {
+      playerHasBomb=false;
+      bombCarrierBotId=owner;
+    }
+  } else {
+    playerHasBomb=false;
+    bombCarrierBotId=(bots.find(b=>b.alive&&b.team==='attack')?.id ?? -1);
+  }
+  buildGunModel(); exitScope(); updateHUD(); updateTimer(); updateScoreboard();
+  updateBombCarrierVisuals();
+  if(gunModel) gunModel.visible=true;
+  bombRoundNumber=attackWins+defendWins+1;
+  setStatus(`ROUND ${bombRoundNumber} · ${playerTeam.toUpperCase()} · FIRST TO ${BOMB_WIN_TARGET}`);
+  setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult) setStatus(''); },900);
+}
 
 // ── HUD ───────────────────────────────────────────────────────────────────
 function updateHUD(){
-  document.getElementById('kills-value').textContent=playerKills;
+  const leftLabel=document.getElementById('left-hud-label');
+  document.getElementById('kills-value').textContent=gameMode==='bomb'?killStreak:playerKills;
+  leftLabel.textContent=gameMode==='bomb'?'Streak':'Kills';
   const he=document.getElementById('health-value');
   he.textContent=health+(playerShield>0?' + '+playerShield+'🛡':'');
   he.style.color=health>50?'#50e080':health>25?'#e0b040':'#e04040';
   const W=WEAPONS[currentWeapon];
   document.getElementById('weapon-name').textContent=W.name;
   document.getElementById('ammo-value').textContent=`${ammoMag}/${ammoReserve}`;
+  const ml=document.getElementById('mode-label');
+  const mv=document.getElementById('mode-value');
+  if(gameMode==='bomb'){
+    ml.textContent=`${playerTeam.toUpperCase()}  $${playerMoney}  ${playerHasBomb?'BOMB  ':''}${isBombBuyPhase()?`BUY ${Math.ceil(bombBuyLock)}`:'LIVE'}`;
+    mv.textContent=`ATK ${attackWins}  |  DEF ${defendWins}  |  FT${BOMB_WIN_TARGET}`;
+    mv.style.color=playerTeam==='attack'?'#ffb36b':'#8de';
+    mv.style.fontSize='15px';
+  } else if(gameMode==='test'){
+    ml.textContent='MODE';
+    mv.textContent='TEST';
+    mv.style.color='#8de';
+    mv.style.fontSize='20px';
+  } else {
+    ml.textContent='MODE';
+    mv.textContent='DM';
+    mv.style.color='#8de';
+    mv.style.fontSize='20px';
+  }
   updateSlotHUD();
 }
 function updateTimer(){
@@ -1703,7 +2468,10 @@ function updateTimer(){
   }
   if(gameMode==='bomb'){
     const el=document.getElementById('timer-display');
-    if(bombPlanted){
+    if(isBombBuyPhase()){
+      el.textContent=`BUY ${Math.ceil(bombBuyLock)}`;
+      el.classList.remove('urgent');
+    } else if(bombPlanted){
       el.textContent=`BOMB ${Math.ceil(bombTimer)}`;
       el.classList.add('urgent');
     } else {
@@ -1711,8 +2479,10 @@ function updateTimer(){
       el.textContent=`ROUND ${bm}:${bs.toString().padStart(2,'0')}`;
       el.classList.toggle('urgent',matchTimeLeft<=30);
     }
+    updateBombProgressBar();
     return;
   }
+  updateBombProgressBar();
   const m=~~(matchTimeLeft/60),s=~~(matchTimeLeft%60);
   const el=document.getElementById('timer-display');
   el.textContent=`${m}:${s.toString().padStart(2,'0')}`;
@@ -1766,11 +2536,23 @@ function spawnDamageNumber(bot,dmg,isHead){
   });
 }
 function updateScoreboard(){
-  const rows=[
-    {name:playerName,kills:playerKills,deaths:playerDeaths,isMe:true},
-    ...bots.map(b=>({name:b.name,kills:b.kills,deaths:b.deaths,isMe:false}))
-  ].sort((a,b)=>b.kills-a.kills||a.deaths-b.deaths)
-   .map(e=>`<tr class="${e.isMe?'me':''}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td></tr>`).join('');
+  const allRows=[
+    {name:playerName,team:gameMode==='bomb'?(playerTeam==='attack'?'ATK':'DEF'):'',money:playerMoney,kills:playerKills,deaths:playerDeaths,assists:playerAssists,isMe:true},
+    ...bots.map(b=>({name:b.name,team:gameMode==='bomb'?(b.team==='attack'?'ATK':'DEF'):'',money:'--',kills:b.kills,deaths:b.deaths,assists:b.assists||0,isMe:false}))
+  ];
+  const rows=gameMode==='bomb'
+    ? [
+        ...allRows.filter(e=>e.team==='ATK').sort((a,b)=>b.kills-a.kills||b.assists-a.assists||a.deaths-b.deaths).map(e=>`<tr class="${e.isMe?'me':''}"><td>${e.name}</td><td>${e.money}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${e.assists}</td></tr>`),
+        '<tr><td colspan="5" style="padding:6px 0;border-top:1px solid #3a3a3a;border-bottom:1px solid #3a3a3a;color:#777;letter-spacing:2px;text-align:center;">DEFENDERS</td></tr>',
+        ...allRows.filter(e=>e.team==='DEF').sort((a,b)=>b.kills-a.kills||b.assists-a.assists||a.deaths-b.deaths).map(e=>`<tr class="${e.isMe?'me':''}"><td>${e.name}</td><td>${e.money}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${e.assists}</td></tr>`)
+      ].join('')
+    : allRows.sort((a,b)=>b.kills-a.kills||a.deaths-b.deaths)
+      .map(e=>`<tr class="${e.isMe?'me':''}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td></tr>`).join('');
+  const head=gameMode==='bomb'
+    ? '<tr><th>Attackers</th><th>$</th><th>K</th><th>D</th><th>A</th></tr>'
+    : '<tr><th>Player</th><th>Kills</th><th>Deaths</th></tr>';
+  document.querySelector('#scoreboard thead').innerHTML=head;
+  document.querySelector('#final-sb thead').innerHTML=head;
   document.getElementById('sb-body').innerHTML=rows;
   document.getElementById('final-sb-body').innerHTML=rows;
 }
@@ -1778,8 +2560,47 @@ function updateScoreboard(){
 // ── PLAYER MOVEMENT ───────────────────────────────────────────────────────
 function updatePlayer(dt){
   if(!playerAlive){
+    if(gameMode==='bomb'){
+      const specSpeed=(keys['ShiftLeft']||keys['ShiftRight'])?15:9;
+      const fw=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+      const rt=new THREE.Vector3( Math.cos(yaw),0,-Math.sin(yaw));
+      const lift=new THREE.Vector3(0,0,0);
+      const move=new THREE.Vector3();
+      if(keys['KeyW']||keys['ArrowUp']) move.add(fw);
+      if(keys['KeyS']||keys['ArrowDown']) move.sub(fw);
+      if(keys['KeyA']||keys['ArrowLeft']) move.sub(rt);
+      if(keys['KeyD']||keys['ArrowRight']) move.add(rt);
+      if(keys['Space']) lift.y+=1;
+      if(keys['ControlLeft']||keys['ControlRight']) lift.y-=1;
+      if(move.lengthSq()>0) move.normalize();
+      if(lift.lengthSq()>0) lift.normalize();
+      camera.position.addScaledVector(move,specSpeed*dt);
+      camera.position.addScaledVector(lift,specSpeed*dt);
+      camera.position.x=Math.max(-MAP_BOUND+2,Math.min(MAP_BOUND-2,camera.position.x));
+      camera.position.y=Math.max(2.4,Math.min(18,camera.position.y));
+      camera.position.z=Math.max(-MAP_BOUND+2,Math.min(MAP_BOUND-2,camera.position.z));
+      const _sens=(()=>{const s=document.getElementById('sens-slider');return s?parseFloat(s.value)/10*0.002:0.002;})();
+      yaw  -=mouseDX*_sens;
+      pitch-=mouseDY*_sens;
+      pitch=Math.max(-Math.PI/2.2,Math.min(Math.PI/2.2,pitch));
+      camera.rotation.y=yaw; camera.rotation.x=pitch;
+      mouseDX=0; mouseDY=0;
+      if(gunModel) gunModel.visible=false;
+      return;
+    }
     playerRespawnTimer-=dt*1000;
     if(playerRespawnTimer<=0) doPlayerRespawn();
+    return;
+  }
+  if(gunModel) gunModel.visible=true;
+  if(gameMode==='bomb'&&isBombBuyPhase()){
+    const _sens=(()=>{const s=document.getElementById('sens-slider');return s?parseFloat(s.value)/10*0.002:0.002;})();
+    yaw  -=mouseDX*_sens;
+    pitch-=mouseDY*_sens;
+    pitch=Math.max(-Math.PI/2.2,Math.min(Math.PI/2.2,pitch));
+    camera.rotation.y=yaw; camera.rotation.x=pitch;
+    mouseDX=0; mouseDY=0;
+    if(WEAPONS[currentWeapon].auto&&autoFiring) autoFiring=false;
     return;
   }
 
@@ -1880,7 +2701,7 @@ function updatePlayer(dt){
     const bob=Math.sin(bobAccum)*0.028;
     camera.position.y=standY+bob;
     footstepTimer-=dt;
-    if(footstepTimer<=0){sndFootstep();footstepTimer=isSprinting?0.27:0.41;}
+    if(footstepTimer<=0){sndFootstep();registerBotNoise(camera.position,playerTeam,'step');footstepTimer=isSprinting?0.27:0.41;}
   } else {
     bobAccum=0;
     footstepTimer=Math.max(0,footstepTimer-dt);
@@ -1891,15 +2712,18 @@ function updatePlayer(dt){
 }
 
 // ── GAME FLOW ──────────────────────────────────────────────────────────────
-function startGame(mode='match'){
+function startGame(mode='match', bombStartSide=null){
   gameMode=mode;
   const ni=document.getElementById('name-input').value.trim();
   playerName=ni||'PLAYER';
   document.getElementById('menu-screen').style.display='none';
   document.getElementById('score-screen').style.display='none';
+  const bombSidePick=document.getElementById('bomb-side-pick');
+  if(bombSidePick) bombSidePick.style.display='none';
   buildMap(gameMode);
 
-  playerKills=0; playerDeaths=0; health=PLAYER_HP; playerMaxHp=PLAYER_HP; playerShield=0; playerMoney=0; shotRecoil=0;
+  playerKills=0; playerDeaths=0; playerAssists=0; health=PLAYER_HP; playerMaxHp=PLAYER_HP; playerShield=0; playerMoney=0; shotRecoil=0;
+  if(gameMode==='bomb'){ playerMoney=BOMB_START_MONEY; bombRoundNumber=1; attackWins=0; defendWins=0; playerTeam=bombStartSide||'attack'; }
   isReloading=false; matchTimeLeft=gameMode==='bomb'?BOMB_ROUND_DURATION:MATCH_DURATION; shotRecoil=0;
   gameRunning=true; playerAlive=true; isScoped=false;
   playerVelY=0; playerVelX=0; playerVelZ=0; onGround=true;
@@ -1911,22 +2735,34 @@ function startGame(mode='match'){
   for(const p of healthDrops) scene.remove(p.mesh);
   healthDrops=[];
   if(crownMesh){scene.remove(crownMesh);crownMesh=null;}
+  updateBombProgressBar();
   for(const b of bots) if(b.mesh.parent) scene.remove(b.mesh);
   bots=[];
 
   // Spawn bots first, collect positions
   const occupied=[];
   const _sl=document.getElementById('bot-slider');
-  const activeBotCount=gameMode==='test' ? 1 : (_sl?parseInt(_sl.value):BOT_COUNT);
+  const activeBotCount=gameMode==='test' ? 1 : (gameMode==='bomb' ? 9 : (_sl?parseInt(_sl.value):BOT_COUNT));
   for(let i=0;i<activeBotCount;i++){
     const bot=new Bot(i);
     if(gameMode==='test'){
       bot.passive=true;
       bot.name='TEST BOT';
+    } else if(gameMode==='bomb'){
+      bot.team='attack';
+      bot.teamSlot=i;
+      bot.name='BOT_'+(i+1);
     }
     bots.push(bot);
     const pos=bot.spawn(occupied);
     occupied.push(pos);
+  }
+  if(gameMode==='bomb'){
+    setupBombRound();
+    document.getElementById('scoreboard').style.display='none';
+    exitScope();
+    renderer.domElement.requestPointerLock();
+    return;
   }
 
   // Spawn player away from bots
@@ -1962,6 +2798,9 @@ function loop(){
   const dt=Math.min(clock.getDelta(),0.05);
   if(gameRunning){
     if(gameMode==='bomb'){
+      const wasBuy=isBombBuyPhase();
+      bombBuyLock=Math.max(0,bombBuyLock-dt);
+      if(wasBuy&&!isBombBuyPhase()&&buyMenuOpen) closeBuyMenu();
       if(!bombPlanted){
         matchTimeLeft-=dt;
         if(matchTimeLeft<=0){matchTimeLeft=0;endBombRound('ROUND OVER');}
@@ -1975,7 +2814,8 @@ function loop(){
     updateBombMode(dt);
     // Pass a function so bots can query current occupied positions at respawn time
     for(const bot of bots) bot.update(dt,getOccupiedPositions);
-    updateTracers(dt); updateParticles(dt); updateHealthDrops(dt); updateCrown(); updateNametags();
+    updateBombCarrierVisuals();
+    updateTracers(dt); updateParticles(dt); updateBombExplosionFX(dt); updateHealthDrops(dt); if(gameMode!=='bomb') updateCrown(); updateNametags(); updateMinimap();
     if(muzzleFlash&&muzzleFlash.visible){muzzleLife-=dt;if(muzzleLife<=0)muzzleFlash.visible=false;}
     if(isReloading){
       const W=WEAPONS[currentWeapon];
@@ -1994,8 +2834,45 @@ document.addEventListener('keydown',e=>{
 
   if(!gameRunning) return;
   if(e.code==='KeyR') startReload();
-  if(e.code==='KeyE') tryPickupHealthDrop();
+  if(e.code==='KeyE'){
+    const nearbyCarrier=getNearbyBombCarrierForPlayer();
+    if(nearbyCarrier){
+      playerHasBomb=true;
+      bombEquipped=true;
+      bombCarrierBotId=-1;
+      bombDroppedPos=null;
+      updateBombCarrierVisuals();
+      setStatus('TOOK BOMB FROM ALLY');
+      setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult&&!bombPlanted) setStatus(''); },500);
+    } else {
+      tryPickupHealthDrop();
+    }
+  }
   if(e.code==='KeyB') openBuyMenu();
+  if(e.code==='Digit4'&&gameMode==='bomb'&&playerTeam==='attack'&&!bombPlanted&&!e.repeat){
+    if(bombDroppedPos && camera.position.distanceTo(bombDroppedPos)<2.4){
+      bombDroppedPos=null;
+      playerHasBomb=true;
+      bombEquipped=true;
+      bombCarrierBotId=-1;
+      setStatus('BOMB PICKED UP');
+    } else if(playerHasBomb){
+      bombEquipped=!bombEquipped;
+      if(bombEquipped){ bombCarrierBotId=-1; bombDroppedPos=null; }
+      setStatus(bombEquipped?'BOMB EQUIPPED':'BOMB STOWED');
+    }
+    setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult&&!bombPlanted) setStatus(''); },500);
+  }
+  if(e.code==='KeyG'&&gameMode==='bomb'&&playerTeam==='attack'&&!bombPlanted&&!e.repeat){
+    if(playerHasBomb){
+      bombEquipped=false;
+      playerHasBomb=false;
+      bombDroppedPos=camera.position.clone();
+      assignBombCarrier();
+      setStatus('BOMB DROPPED');
+      setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult&&!bombPlanted) setStatus(''); },500);
+    }
+  }
   if(e.code==='Digit1') equipSlot(1);
   if(e.code==='Digit2') equipSlot(2);
   if(e.code==='Digit3') equipSlot(3);
@@ -2049,9 +2926,19 @@ document.addEventListener('pointerlockchange',()=>{
 window.addEventListener('DOMContentLoaded',()=>{
   try{ init(); buildMap(); }catch(e){ console.error('Boot error:',e); }
 
-  document.getElementById('btn-start').addEventListener('click',startGame);
-  document.getElementById('btn-bomb').addEventListener('click',()=>startGame('bomb'));
-  document.getElementById('btn-test').addEventListener('click',()=>startGame('test'));
+  document.getElementById('btn-start').addEventListener('click',()=>startGame());
+  const oldBomb=document.getElementById('btn-bomb');
+  if(oldBomb) oldBomb.addEventListener('click',()=>{
+    const pick=document.getElementById('bomb-side-pick');
+    if(pick) pick.style.display=pick.style.display==='flex'?'none':'flex';
+  });
+  document.getElementById('btn-bomb-atk').addEventListener('click',()=>startGame('bomb','attack'));
+  document.getElementById('btn-bomb-def').addEventListener('click',()=>startGame('bomb','defend'));
+  document.getElementById('btn-test').addEventListener('click',()=>{
+    const pick=document.getElementById('bomb-side-pick');
+    if(pick) pick.style.display='none';
+    startGame('test');
+  });
   document.getElementById('btn-controls').addEventListener('click',()=>{
     const p=document.getElementById('controls-panel');
     p.style.display=p.style.display==='none'?'block':'none';
@@ -2113,6 +3000,91 @@ function sndPickup(){ _beep(500,0.06,'triangle',0.026,820); setTimeout(()=>_beep
 function sndDeath(){ _beep(280,0.35,'sawtooth',0.04,75); }
 function sndHeal(){ _beep(500,0.06,'triangle',0.032,820); setTimeout(()=>_beep(660,0.09,'triangle',0.028,1050),65); }
 function sndFootstep(){ _beep(88,0.045,'sine',0.007,72); }
+function sndBombPlant(){
+  _beep(620,0.09,'square',0.035,820);
+  setTimeout(()=>_beep(820,0.1,'square',0.03,1040),110);
+  setTimeout(()=>_beep(1080,0.12,'triangle',0.028,1440),230);
+}
+function sndBombDefuse(){
+  _beep(980,0.08,'triangle',0.03,720);
+  setTimeout(()=>_beep(760,0.08,'triangle',0.03,540),100);
+  setTimeout(()=>_beep(540,0.12,'sine',0.028,260),210);
+}
+function sndBombExplode(){
+  _beep(160,0.28,'sawtooth',0.055,55);
+  setTimeout(()=>_beep(90,0.42,'sawtooth',0.05,35),80);
+  setTimeout(()=>_beep(280,0.22,'square',0.028,120),110);
+}
+function updateBombExplosionFX(dt){
+  for(let i=bombExplosionFx.length-1;i>=0;i--){
+    const fx=bombExplosionFx[i];
+    fx.life-=dt;
+    fx.radius+=dt*18;
+    spawnParticles(fx.pos.clone().add(new THREE.Vector3((Math.random()-0.5)*fx.radius*0.4,0.3+Math.random()*1.6,(Math.random()-0.5)*fx.radius*0.4)),0xff7a3a);
+    if(fx.life<=0) bombExplosionFx.splice(i,1);
+  }
+}
+function updateMinimap(){
+  const cv=document.getElementById('minimap');
+  if(!cv) return;
+  cv.style.display=gameMode==='bomb'?'block':'none';
+  if(gameMode!=='bomb') return;
+  const ctx=cv.getContext('2d');
+  const w=cv.width,h=cv.height,scale=w/(MAP_BOUND*2+8);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='rgba(10,12,18,0.95)';
+  ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(255,255,255,0.12)';
+  ctx.strokeRect(6,6,w-12,h-12);
+  const toMap=(x,z)=>({x:w/2+x*scale,y:h/2+z*scale});
+  ctx.fillStyle='rgba(94,132,72,0.45)';
+  const tSpawn=toMap(0,56), ctSpawn=toMap(0,-56);
+  ctx.fillRect(tSpawn.x-11*scale,tSpawn.y-6*scale,22*scale,12*scale);
+  ctx.fillRect(ctSpawn.x-11*scale,ctSpawn.y-6*scale,22*scale,12*scale);
+  ctx.fillStyle='rgba(70,74,88,0.85)';
+  [
+    [-26,18,12,18],[26,18,12,18],[-20,-2,16,26],[20,-2,16,26],[-18,-30,10,16],[18,-30,10,16],
+    [-25,6,22,10],[25,6,22,10],[-25,-12,20,12],[25,-12,20,12],[-58,12,8,18],[58,12,8,18],[-54,-2,10,12],[54,-2,10,12]
+  ].forEach(([x,z,sx,sz])=>{
+    const p=toMap(x,z);
+    ctx.fillRect(p.x-sx*scale*0.5,p.y-sz*scale*0.5,sx*scale,sz*scale);
+  });
+  ctx.fillStyle='rgba(190,170,130,0.08)';
+  ctx.fillRect(12,12,w-24,h-24);
+  for(const [id,site] of Object.entries(BOMB_SITES)){
+    const p=toMap(site.center.x,site.center.z);
+    ctx.fillStyle=id==='A'?'rgba(255,164,90,0.35)':'rgba(90,184,255,0.35)';
+    ctx.fillRect(p.x-site.size.x*scale*0.5,p.y-site.size.y*scale*0.5,site.size.x*scale,site.size.y*scale);
+    ctx.fillStyle=id==='A'?'#ffb36b':'#8de';
+    ctx.fillText(id,p.x-3,p.y+4);
+  }
+  const allyTeam=playerTeam;
+  bots.filter(b=>b.alive&&b.team===allyTeam).forEach(b=>{
+    const p=toMap(b.mesh.position.x,b.mesh.position.z);
+    ctx.fillStyle=b.team==='attack'?'#ff9f62':'#78d6ff';
+    ctx.fillRect(p.x-2,p.y-2,4,4);
+  });
+  if(playerAlive||gameMode==='bomb'){
+    const p=toMap(camera.position.x,camera.position.z);
+    ctx.fillStyle='#5cff7a';
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#5cff7a';
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y);
+    ctx.lineTo(p.x+Math.sin(yaw)*8,p.y-Math.cos(yaw)*8);
+    ctx.stroke();
+  }
+  if(bombPlanted&&plantedBombSite){
+    const site=BOMB_SITES[plantedBombSite];
+    const p=toMap(site.plant.x,site.plant.z);
+    ctx.fillStyle='#ff4a4a';
+    ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fill();
+  } else if(bombDroppedPos){
+    const p=toMap(bombDroppedPos.x,bombDroppedPos.z);
+    ctx.fillStyle='#ffda5f';
+    ctx.fillRect(p.x-3,p.y-3,6,6);
+  }
+}
 
 // ── FULLSCREEN ─────────────────────────────────────────────────────────────
 async function toggleFullscreen(){
@@ -2243,6 +3215,12 @@ function equipSlot(slot){
 function buyAndEquip(key){
   const w=WEAPONS[key]; if(!w) return;
   clearGlockBurst();
+  if(gameMode==='bomb'){
+    if(!isBombBuyPhase()){ setStatus('BUY PHASE HAS ENDED'); setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult) setStatus(''); },900); return; }
+    const cost=getBombGunCost(key);
+    if(playerMoney<cost){ setStatus('NOT ENOUGH MONEY'); setTimeout(()=>{ if(gameRunning) setStatus(''); },700); return; }
+    playerMoney-=cost;
+  }
   const cat=SLOT_CATS[w.cat];
   if(cat===1){ slot1Key=key; if(activeSlot===1){ currentWeapon=key; ammoMag=w.mag; ammoReserve=w.reserve; isReloading=false; buildGunModel(); } else { activeSlot=1; equipSlot(1); } }
   if(cat===2){ slot2Key=key; if(activeSlot===2){ currentWeapon=key; ammoMag=w.mag; ammoReserve=w.reserve; isReloading=false; buildGunModel(); } }
@@ -2250,6 +3228,12 @@ function buyAndEquip(key){
   updateHUD(); closeBuyMenu(); buildGunModel();
 }
 function buyShieldItem(id){
+  if(gameMode==='bomb'){
+    if(!isBombBuyPhase()){ setStatus('BUY PHASE HAS ENDED'); setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult) setStatus(''); },900); return; }
+    const cost=BOMB_SHIELD_COSTS[id]||0;
+    if(playerMoney<cost){ setStatus('NOT ENOUGH MONEY'); setTimeout(()=>{ if(gameRunning) setStatus(''); },700); return; }
+    playerMoney-=cost;
+  }
   if(id==='shield_sm') playerShield=Math.min(playerShield+25,25);
   else if(id==='shield_md') playerShield=Math.min(playerShield+50,50);
   else if(id==='shield_lg') playerShield=Math.min(playerShield+100,100);
@@ -2259,6 +3243,11 @@ function buyShieldItem(id){
 // Buy menu open/close
 function openBuyMenu(){
   if(!gameRunning) return;
+  if(gameMode==='bomb'&&!isBombBuyPhase()){
+    setStatus('BUY PHASE HAS ENDED');
+    setTimeout(()=>{ if(gameRunning&&gameMode==='bomb'&&!bombRoundResult) setStatus(''); },900);
+    return;
+  }
   buyMenuOpen=true;
   renderBuyMenu();
   const el=document.getElementById('buy-overlay');
@@ -2303,7 +3292,7 @@ function renderBuyMenu(){
       card.onmouseout=function(){this.style.borderColor=bc;};
       card.onclick=function(){buyAndEquip(key);};
       card.innerHTML='<div style="font-size:13px;font-weight:bold;margin-bottom:2px;">'+w.name+'</div>'
-        +'<div style="color:#888;font-size:10px;margin-bottom:3px;">FREE &nbsp;&middot;&nbsp; '+(SLOT_CATS[w.cat]===1?'PRIMARY SLOT':'PISTOL SLOT')+'</div>'
+        +'<div style="color:#888;font-size:10px;margin-bottom:3px;">'+(gameMode==='bomb'?'$'+getBombGunCost(key):'FREE')+' &nbsp;&middot;&nbsp; '+(SLOT_CATS[w.cat]===1?'PRIMARY SLOT':'PISTOL SLOT')+'</div>'
         +'<div style="color:#555;font-size:10px;line-height:1.6;">DMG '+w.damage+'/'+(w.damageMid||w.damage)+'/'+(w.damageFar||w.damageMid||w.damage)+' | MAG '+w.mag+'<br>'+(w.fireRate>300?'SLOW':w.fireRate>100?'MED':'FAST')+' FIRE'+(w.scope?' | SCOPE':'')+(w.pellets?' | x'+w.pellets+' PELLETS':'')+'</div>';
       html+='__CARD_'+key+'__';
     });
@@ -2389,7 +3378,7 @@ function renderBuyMenuDOM(o){
       nm.textContent=w.name;
       const sl=document.createElement('div');
       sl.style.cssText='color:#888;font-size:10px;margin-bottom:3px;';
-      sl.textContent='FREE · '+(SLOT_CATS[w.cat]===1?'PRIMARY SLOT':'PISTOL SLOT');
+      sl.textContent=(gameMode==='bomb'?'$'+getBombGunCost(key):'FREE')+' · '+(SLOT_CATS[w.cat]===1?'PRIMARY SLOT':'PISTOL SLOT');
       const st=document.createElement('div');
       st.style.cssText='color:#555;font-size:10px;line-height:1.6;';
       st.innerHTML='DMG '+w.damage+'/'+(w.damageMid||w.damage)+'/'+(w.damageFar||w.damageMid||w.damage)+' | MAG '+w.mag+'<br>'+(w.fireRate>300?'SLOW':w.fireRate>100?'MED':'FAST')+' FIRE'+(w.scope?' | SCOPE':'')+(w.pellets?' | x'+w.pellets+' PELLETS':'');
@@ -2410,7 +3399,7 @@ function renderBuyMenuDOM(o){
     nm.textContent=s.name;
     const fr=document.createElement('div');
     fr.style.cssText='color:#888;font-size:10px;margin-bottom:3px;';
-    fr.textContent='FREE';
+    fr.textContent=gameMode==='bomb'?'$'+(BOMB_SHIELD_COSTS[s.id]||0):'FREE';
     const ds=document.createElement('div');
     ds.style.cssText='color:#555;font-size:10px;';
     ds.textContent=s.desc;
