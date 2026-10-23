@@ -835,10 +835,9 @@ function init(){
   scene.fog=new THREE.FogExp2(0x18181f,0.011);
   camera=new THREE.PerspectiveCamera(80,innerWidth/innerHeight,0.05,250);
   renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game-canvas'),antialias:!IS_MOBILE_DEVICE});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1.25:2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1:1.5));
   renderer.setSize(innerWidth,innerHeight);
-  renderer.shadowMap.enabled=!IS_MOBILE_DEVICE;
-  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled=false; // predictable low-cost lighting across devices
   clock=new THREE.Clock();
   camera.rotation.order='YXZ';
   scene.add(camera);
@@ -846,8 +845,7 @@ function init(){
   scene.add(Object.assign(new THREE.AmbientLight(0x303045),{intensity:0.85}));
   const sun=new THREE.DirectionalLight(0xfff0d0,1.1);
   sun.position.set(20,40,15);
-  sun.castShadow=!IS_MOBILE_DEVICE;
-  sun.shadow.mapSize.set(IS_MOBILE_DEVICE?1024:2048,IS_MOBILE_DEVICE?1024:2048);
+  sun.castShadow=false;
   Object.assign(sun.shadow.camera,{near:1,far:160,left:-90,right:90,top:90,bottom:-90});
   scene.add(sun);
   const fill=new THREE.PointLight(0x4060ff,0.4,70);
@@ -1294,14 +1292,7 @@ function buildMap(mode='match'){
     const ctSpawn=new THREE.Mesh(new THREE.PlaneGeometry(22,12),new THREE.MeshLambertMaterial({color:0x5e8448,transparent:true,opacity:0.8}));
     ctSpawn.rotation.x=-Math.PI/2; ctSpawn.position.set(0,0.05,-56); addToMap(ctSpawn);
 
-    // Lane labels / site markers
-    [
-      [-53,0.7,16,0xffa45a], [53,0.7,16,0x5ab8ff], [0,0.7,22,0xdddddd],
-      [0,0.7,0,0xdddddd], [0,0.7,-22,0xdddddd], [0,0.7,-44,0xdddddd]
-    ].forEach(([x,y,z,col])=>{
-      const p=new THREE.PointLight(col,0.7,16);
-      p.position.set(x,y,z); addToMap(p);
-    });
+    // Lane markings are added as low-cost ground inlays after the map geometry.
 
     for(const [id,site] of Object.entries(BOMB_SITES)){
       const pad=new THREE.Mesh(new THREE.PlaneGeometry(site.size.x,site.size.y),new THREE.MeshLambertMaterial({color:id==='A'?0x4f2d1c:0x1d3652,transparent:true,opacity:0.72}));
@@ -1315,16 +1306,10 @@ function buildMap(mode='match'){
       const outline=new THREE.Mesh(new THREE.EdgesGeometry(new THREE.BoxGeometry(site.size.x,0.2,site.size.y)),new THREE.LineBasicMaterial({color:site.color}));
       outline.position.set(site.center.x,0.11,site.center.z);
       addToMap(outline);
-      const beacon=new THREE.PointLight(site.color,1.2,28);
-      beacon.position.set(site.center.x,3.2,site.center.z);
-      addToMap(beacon);
+      // Emissive site edges provide clear objective contrast without extra dynamic lights.
     }
 
-    [[-48,6,10],[48,6,10],[-6,6,36],[6,6,-36],[0,8,0]].forEach(([x,y,z],i)=>{
-      const cols=[0xff8a55,0x5ac0ff,0xffffff,0xffd35a,0x7f8cff];
-      const pl=new THREE.PointLight(cols[i],1.1,34);
-      pl.position.set(x,y,z); addToMap(pl);
-    });
+    // Use baked-looking material contrast instead of multiple expensive point lights.
     return;
   }
 
@@ -4145,6 +4130,7 @@ function knifeAttack(btn){
       window.buildMap=function(mode='match'){
         const result=originalBuildMap(mode);
         addWorldDetail(mode);
+        buildNavGrid();
         return result;
       };
     }
