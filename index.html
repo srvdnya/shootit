@@ -139,7 +139,7 @@ body.mobile #mobile-controls,body.mobile #mobile-look{display:block}
 }
 
 /* ── SHOOTIT WORLD + ONLINE LOBBY ───────────────────────────────────── */
-#online-panel{width:min(420px,calc(100vw - 32px));margin:8px 0 10px;padding:14px;background:linear-gradient(145deg,rgba(26,31,43,.96),rgba(10,12,18,.96));border:1px solid rgba(110,145,190,.32);border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.3)}
+#menu-screen{overflow-y:auto;justify-content:flex-start;padding:18px 12px}#menu-screen h1{margin-top:8px}#online-panel{width:min(420px,calc(100vw - 32px));margin:8px 0 10px;padding:14px;background:linear-gradient(145deg,rgba(26,31,43,.96),rgba(10,12,18,.96));border:1px solid rgba(110,145,190,.32);border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.3)}
 #online-panel .online-title{font:800 11px 'Courier New',monospace;letter-spacing:3px;color:#9dc8ff;margin-bottom:10px;text-align:center}
 #online-panel .online-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 #online-panel .online-btn{background:#17263a;color:#dceaff;border:1px solid #45678f;padding:9px 13px;border-radius:4px;font:700 11px 'Courier New',monospace;letter-spacing:1px;cursor:pointer}
@@ -152,7 +152,7 @@ body.mobile #mobile-controls,body.mobile #mobile-look{display:block}
 #online-room-share{display:none;margin-top:8px;text-align:center;color:#dbe7f8;font:12px 'Courier New',monospace}
 #online-room-share strong{display:block;color:#f0c040;font-size:22px;letter-spacing:4px;margin:5px}
 #online-copy{margin-top:5px;background:transparent;border:1px solid #52647d;color:#cbd8eb;padding:5px 10px;border-radius:3px;font:10px 'Courier New',monospace;cursor:pointer}
-#online-presence{position:fixed;top:60px;right:22px;z-index:26;display:none;padding:7px 10px;background:rgba(7,12,18,.8);border:1px solid rgba(130,170,220,.25);border-radius:4px;color:#a9d2ff;font:10px 'Courier New',monospace;letter-spacing:1px;pointer-events:none}
+#online-presence{position:fixed;top:60px;right:22px;z-index:26;display:none;padding:7px 10px;background:rgba(7,12,18,.9);border:1px solid rgba(130,170,220,.35);border-radius:4px;color:#a9d2ff;font:10px 'Courier New',monospace;letter-spacing:1px;pointer-events:auto;cursor:pointer}
 #online-chat-toast{position:fixed;top:110px;left:50%;transform:translateX(-50%);z-index:70;padding:8px 14px;background:rgba(5,10,16,.92);border:1px solid #45678f;color:#dceaff;font:11px 'Courier New',monospace;display:none;pointer-events:none}
 @media(max-width:650px){#online-panel{padding:10px;margin:4px 0 8px}#online-panel .online-btn{padding:8px 10px}#online-presence{top:48px;right:8px;font-size:9px}#menu-screen{overflow-y:auto;justify-content:flex-start;padding:22px 10px}#menu-screen h1{margin-top:8px}#online-room-share strong{font-size:18px}}
 
@@ -3919,7 +3919,7 @@ function knifeAttack(btn){
   const NET_TICK=66, MAX_PEERS=5;
   function setOnlineStatus(message,kind=''){ const el=$('online-status'); if(!el)return; el.textContent=message; el.className=kind; }
   function toast(message){const el=$('online-chat-toast');if(!el)return;el.textContent=message;el.style.display='block';clearTimeout(netToastTimer);netToastTimer=setTimeout(()=>el.style.display='none',2400);}
-  function showPresence(){const el=$('online-presence');if(!el)return;el.style.display=online?'block':'none';if(online)el.textContent='P2P · '+(1+remotePlayers.size)+' PLAYER'+(remotePlayers.size===0?'':'S');}
+  function showPresence(){const el=$('online-presence');if(!el)return;el.style.display=online?'block':'none';if(online)el.textContent='P2P · ROOM '+roomCode+' · '+(1+remotePlayers.size)+' PLAYER'+(remotePlayers.size===0?'':'S')+' · CLICK TO COPY';}
   function safeSend(conn,msg){try{if(conn&&conn.open)conn.send(msg);}catch(e){}}
   function broadcast(msg,exceptId=null){
     if(isRoomHost){for(const [id,conn] of connections)if(id!==exceptId)safeSend(conn,msg);}
@@ -4147,6 +4147,7 @@ function knifeAttack(btn){
     $('online-create').addEventListener('click',createRoom);
     $('online-join').addEventListener('click',joinRoom);
     $('online-leave').addEventListener('click',()=>{resetNetwork('Disconnected. You can create or join another room.');if(gameRunning)returnToMainMenu();});
+    $('online-presence').addEventListener('click',async()=>{if(!online)return;try{await navigator.clipboard.writeText(roomCode);toast('Room code '+roomCode+' copied');}catch(e){toast('Room code: '+roomCode);}});
     $('online-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(roomCode);setOnlineStatus('Room code copied. Share it with your friends.','good');}catch(e){$('online-room-code').select();setOnlineStatus('Select and copy the room code above.');}});
     $('online-room-code').addEventListener('keydown',e=>{if(e.key==='Enter')joinRoom();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&online&&gameRunning){e.preventDefault();}});
@@ -4192,7 +4193,7 @@ function knifeAttack(btn){
     // Cover props are placed in open lanes, not across the bomb routes.
     const crate=(x,z,s=1)=>{
       const y=.62*s;
-      box(1.5*s,1.2*s,1.5*s,x,y,z,0x67513a,{metalness:.04});
+      const body=box(1.5*s,1.2*s,1.5*s,x,y,z,0x67513a,{metalness:.04});solidObjects.push({mesh:body,hx:.75*s,hy:.6*s,hz:.75*s,px:x,py:y,pz:z});
       for(const off of [-.45,.45])box(.08*s,1.23*s,1.58*s,x+off*s,y,z,0x9a7848,{metalness:.18});
       box(1.55*s,.08*s,1.55*s,x,y+.62*s,z,0x3a414b,{metalness:.35});
       box(1.54*s,.08*s,1.54*s,x,y-.62*s,z,0x3a414b,{metalness:.35});
@@ -4219,7 +4220,7 @@ function knifeAttack(btn){
   }
   // Bot anti-stuck recovery: after repeated near-zero movement, sidestep and reacquire a target.
   function patchBotRecovery(){
-    if(!window.Bot||!Bot.prototype||Bot.prototype.__shootitRecovery)return;
+    if(typeof Bot==='undefined'||!Bot.prototype||Bot.prototype.__shootitRecovery)return;
     const oldUpdate=Bot.prototype.update;
     Bot.prototype.update=function(dt,positions){
       const before=this.mesh&&this.mesh.position.clone();
