@@ -137,6 +137,25 @@ body.mobile #mobile-controls,body.mobile #mobile-look{display:block}
   #pickup-prompt{bottom:136px;font-size:11px;padding:6px 12px}
   body.mobile #crosshair{opacity:0.9}
 }
+
+/* ── SHOOTIT WORLD + ONLINE LOBBY ───────────────────────────────────── */
+#online-panel{width:min(420px,calc(100vw - 32px));margin:8px 0 10px;padding:14px;background:linear-gradient(145deg,rgba(26,31,43,.96),rgba(10,12,18,.96));border:1px solid rgba(110,145,190,.32);border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.3)}
+#online-panel .online-title{font:800 11px 'Courier New',monospace;letter-spacing:3px;color:#9dc8ff;margin-bottom:10px;text-align:center}
+#online-panel .online-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#online-panel .online-btn{background:#17263a;color:#dceaff;border:1px solid #45678f;padding:9px 13px;border-radius:4px;font:700 11px 'Courier New',monospace;letter-spacing:1px;cursor:pointer}
+#online-panel .online-btn.primary{background:#f0c040;color:#151515;border-color:#f0c040}
+#online-panel .online-btn:disabled{opacity:.45;cursor:wait}
+#online-panel .online-join{display:flex;gap:7px;margin-top:9px}
+#online-room-code{min-width:0;flex:1;background:#090d14;border:1px solid #38475b;border-radius:4px;padding:9px 10px;color:#fff;font:700 12px 'Courier New',monospace;letter-spacing:2px;text-transform:uppercase}
+#online-status{min-height:16px;margin-top:9px;color:#9aa8bd;font:11px 'Courier New',monospace;text-align:center;letter-spacing:.5px}
+#online-status.good{color:#75e6a1}#online-status.bad{color:#ff8585}
+#online-room-share{display:none;margin-top:8px;text-align:center;color:#dbe7f8;font:12px 'Courier New',monospace}
+#online-room-share strong{display:block;color:#f0c040;font-size:22px;letter-spacing:4px;margin:5px}
+#online-copy{margin-top:5px;background:transparent;border:1px solid #52647d;color:#cbd8eb;padding:5px 10px;border-radius:3px;font:10px 'Courier New',monospace;cursor:pointer}
+#online-presence{position:fixed;top:60px;right:22px;z-index:26;display:none;padding:7px 10px;background:rgba(7,12,18,.8);border:1px solid rgba(130,170,220,.25);border-radius:4px;color:#a9d2ff;font:10px 'Courier New',monospace;letter-spacing:1px;pointer-events:none}
+#online-chat-toast{position:fixed;top:110px;left:50%;transform:translateX(-50%);z-index:70;padding:8px 14px;background:rgba(5,10,16,.92);border:1px solid #45678f;color:#dceaff;font:11px 'Courier New',monospace;display:none;pointer-events:none}
+@media(max-width:650px){#online-panel{padding:10px;margin:4px 0 8px}#online-panel .online-btn{padding:8px 10px}#online-presence{top:48px;right:8px;font-size:9px}#menu-screen{overflow-y:auto;justify-content:flex-start;padding:22px 10px}#menu-screen h1{margin-top:8px}#online-room-share strong{font-size:18px}}
+
 </style>
 </head>
 <body>
@@ -253,6 +272,23 @@ body.mobile #mobile-controls,body.mobile #mobile-look{display:block}
   <h1>SHOOTIT</h1>
   <p>5-MIN DEATHMATCH &nbsp;&middot;&nbsp; BASE HP 100 &nbsp;&middot;&nbsp; HEADSHOT 2.5X</p>
   <input id="name-input" type="text" maxlength="16" placeholder="YOUR NAME" spellcheck="false"/>
+
+<div id="online-panel">
+  <div class="online-title">PLAY WITH FRIENDS · P2P</div>
+  <div class="online-actions">
+    <button class="online-btn primary" id="online-create">CREATE ROOM</button>
+    <button class="online-btn" id="online-leave" style="display:none">DISCONNECT</button>
+  </div>
+  <div class="online-join">
+    <input id="online-room-code" maxlength="16" placeholder="ENTER ROOM CODE" autocomplete="off" spellcheck="false" aria-label="Room code">
+    <button class="online-btn" id="online-join">JOIN</button>
+  </div>
+  <div id="online-room-share">SHARE THIS CODE WITH FRIENDS<strong id="online-room-code-display">------</strong><button id="online-copy">COPY ROOM CODE</button></div>
+  <div id="online-status" role="status">Online rooms use direct peer connections. Share the code with your friends.</div>
+</div>
+<div id="online-presence">P2P · 1 PLAYER</div>
+<div id="online-chat-toast"></div>
+
   <div style="margin:10px 0;color:#aaa;font-size:13px;display:flex;align-items:center;gap:10px;justify-content:center;">
     <label>BOTS:</label>
     <input type="range" min="1" max="20" value="10" id="bot-slider" style="width:130px;" oninput="document.getElementById('bot-count-label').textContent=this.value">
@@ -3870,5 +3906,342 @@ function knifeAttack(btn){
 <!-- BUY OVERLAY: appended last so it renders above WebGL canvas -->
 <div id="buy-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.93);z-index:9999;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto;box-sizing:border-box;">
 </div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+/* ShootIt P2P room layer. PeerJS is used for signaling; gameplay data travels over WebRTC. */
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let peer=null, roomCode='', isRoomHost=false, online=false, roomStarting=false;
+  let hostConn=null, connections=new Map(), remotePlayers=new Map(), netTimer=0, netToastTimer=0;
+  let localSessionId='', onlineStarted=false, originalStartGame=null, originalBuildMap=null;
+  const NET_TICK=66, MAX_PEERS=5;
+  function setOnlineStatus(message,kind=''){ const el=$('online-status'); if(!el)return; el.textContent=message; el.className=kind; }
+  function toast(message){const el=$('online-chat-toast');if(!el)return;el.textContent=message;el.style.display='block';clearTimeout(netToastTimer);netToastTimer=setTimeout(()=>el.style.display='none',2400);}
+  function showPresence(){const el=$('online-presence');if(!el)return;el.style.display=online?'block':'none';if(online)el.textContent='P2P · '+(1+remotePlayers.size)+' PLAYER'+(remotePlayers.size===0?'':'S');}
+  function safeSend(conn,msg){try{if(conn&&conn.open)conn.send(msg);}catch(e){}}
+  function broadcast(msg,exceptId=null){
+    if(isRoomHost){for(const [id,conn] of connections)if(id!==exceptId)safeSend(conn,msg);}
+    else safeSend(hostConn,msg);
+  }
+  function roomPeerId(code){return 'shootit-'+code.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,10);}
+  function makeCode(){return Math.random().toString(36).slice(2,8).toUpperCase();}
+  function setLobbyControls(connected){
+    $('online-create').style.display=connected?'none':'';
+    $('online-join').style.display=connected?'none':'';
+    $('online-room-code').disabled=connected;
+    $('online-leave').style.display=connected?'':'none';
+    $('online-room-share').style.display=(connected&&isRoomHost)?'block':'none';
+    showPresence();
+  }
+  function resetNetwork(reason='Disconnected'){
+    online=false;onlineStarted=false;roomStarting=false;isRoomHost=false;roomCode='';
+    if(peer){try{peer.destroy();}catch(e){}}
+    peer=null;hostConn=null;connections.clear();
+    for(const [id,p] of remotePlayers){if(p.mesh&&p.mesh.parent)p.mesh.parent.remove(p.mesh);}
+    remotePlayers.clear();setLobbyControls(false);setOnlineStatus(reason);showPresence();
+  }
+  function createRemoteMesh(id,name){
+    const root=new THREE.Group();
+    const teamMat=new THREE.MeshStandardMaterial({color:0x49a9ff,roughness:.78,metalness:.08});
+    const darkMat=new THREE.MeshStandardMaterial({color:0x182333,roughness:.86});
+    const skinMat=new THREE.MeshStandardMaterial({color:0xc99570,roughness:.9});
+    const vest=new THREE.Mesh(new THREE.BoxGeometry(.58,.58,.31),teamMat);vest.position.y=.92;root.add(vest);
+    const belt=new THREE.Mesh(new THREE.BoxGeometry(.6,.1,.33),darkMat);belt.position.y=.59;root.add(belt);
+    for(const x of [-.17,.17]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.2,.55,.23),darkMat);leg.position.set(x,.28,0);root.add(leg);}
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.22,10,8),skinMat);head.position.y=1.38;root.add(head);
+    const helmet=new THREE.Mesh(new THREE.SphereGeometry(.235,10,6,0,Math.PI*2,0,Math.PI*.55),darkMat);helmet.position.y=1.46;root.add(helmet);
+    const gun=new THREE.Mesh(new THREE.BoxGeometry(.09,.1,.58),darkMat);gun.position.set(.38,1.02,-.18);root.add(gun);
+    const tag=document.createElement('div');tag.className='ntag passive';tag.textContent=name||'PLAYER';$('nametags').appendChild(tag);
+    scene.add(root);
+    return {id,name:name||'PLAYER',mesh:root,tag,state:null,lastUpdate:performance.now(),hp:100,kills:0,deaths:0};
+  }
+  function getRemote(id,name){let p=remotePlayers.get(id);if(!p){p=createRemoteMesh(id,name);remotePlayers.set(id,p);}if(name)p.name=name;return p;}
+  function handleNetMessage(fromId,msg,conn){
+    if(!msg||typeof msg!=='object')return;
+    if(msg.type==='hello'){
+      if(!isRoomHost)return;
+      const count=connections.size;
+      safeSend(conn,{type:'welcome',id:fromId,name:String(msg.name||'PLAYER').slice(0,16),hostId:peer.id,mode:gameMode||'match',started:!!gameRunning,hostName:playerName});
+      broadcast({type:'peer-joined',id:fromId,name:String(msg.name||'PLAYER').slice(0,16)},fromId);
+      toast((msg.name||'A player')+' joined the room');
+      return;
+    }
+    if(msg.type==='welcome'){
+      localSessionId=fromId;
+      roomStarting=!!msg.started;
+      if(msg.started&&!gameRunning){startOnlineGame(msg.mode||'match');}
+      setOnlineStatus('Connected to room '+roomCode+' · waiting for game state','good');
+      toast('Connected to host');
+      return;
+    }
+    if(msg.type==='start'){
+      if(!gameRunning)startOnlineGame(msg.mode||'match');
+      roomStarting=true;toast('Match started');return;
+    }
+    if(msg.type==='peer-joined'){
+      const p=getRemote(msg.id,msg.name);showPresence();return;
+    }
+    if(msg.type==='peer-left'){
+      removeRemote(msg.id);return;
+    }
+    if(msg.type==='state'){
+      const p=getRemote(fromId,msg.name);p.state=msg.state;p.lastUpdate=performance.now();p.hp=msg.state.hp??p.hp;p.kills=msg.state.kills||0;p.deaths=msg.state.deaths||0;return;
+    }
+    if(msg.type==='shot'){
+      if(msg.from===localSessionId)return;
+      showRemoteShot(msg);
+      if(msg.from!==localSessionId&&gameRunning&&playerAlive&&msg.origin&&msg.direction){
+        const origin=new THREE.Vector3(msg.origin.x,msg.origin.y,msg.origin.z);
+        const dir=new THREE.Vector3(msg.direction.x,msg.direction.y,msg.direction.z).normalize();
+        const target=camera.position.clone();target.y-=.75;
+        const toTarget=target.sub(origin);const along=toTarget.dot(dir);
+        if(along>0&&along<Math.min(msg.range||65,65)){
+          const closest=origin.clone().addScaledVector(dir,along);
+          const distance=closest.distanceTo(camera.position.clone().add(new THREE.Vector3(0,-.65,0)));
+          const wallRay=new THREE.Raycaster(origin,dir,0,along);
+          const wallHits=wallRay.intersectObjects((solidObjects||[]).map(o=>o.mesh),false);
+          if(distance<.82&&(!wallHits.length||wallHits[0].distance>along-.6)){
+            const dmg=Math.max(6,Math.min(45,Number(msg.damage)||18));
+            takeDamage(dmg,origin,null);
+            broadcast({type:'hit-confirm',target:localSessionId,attacker:msg.from,damage:dmg});
+          }
+        }
+      }
+      return;
+    }
+    if(msg.type==='hit-confirm'){
+      if(msg.attacker===localSessionId){toast('HIT · '+msg.damage);if(msg.killed){playerKills++;updateHUD();}}
+      return;
+    }
+    if(msg.type==='chat'){toast((msg.name||'PLAYER')+': '+String(msg.text||'').slice(0,80));return;}
+    if(msg.type==='start-request'&&isRoomHost){safeSend(conn,{type:'start',mode:gameMode||'match'});return;}
+    if(msg.type==='snapshot-request'&&isRoomHost){safeSend(conn,{type:'start',mode:gameMode||'match'});return;}
+  }
+  function attachConnection(conn,isHostLink=false){
+    if(!conn)return;
+    const id=conn.peer;
+    if(isRoomHost&&connections.size>=MAX_PEERS){safeSend(conn,{type:'full'});conn.close();return;}
+    if(isHostLink)hostConn=conn;else if(isRoomHost)connections.set(id,conn);
+    conn.on('open',()=>{
+      if(isHostLink){safeSend(conn,{type:'hello',name:playerName||$('name-input').value.trim()||'PLAYER'});safeSend(conn,{type:'start-request'});}
+      else if(isRoomHost){connections.set(id,conn);}
+      setOnlineStatus('Peer connected · syncing match','good');showPresence();
+    });
+    conn.on('data',msg=>{
+      if(isRoomHost){
+        if(msg&&msg.type==='hello'){handleNetMessage(id,msg,conn);return;}
+        if(msg&&msg.type==='state'){const p=getRemote(id,msg.name);p.state=msg.state;p.lastUpdate=performance.now();broadcast(msg,id);return;}
+        if(msg&&msg.type==='shot'){broadcast(msg,id);handleNetMessage(id,msg,conn);return;}
+        if(msg&&msg.type==='hit-confirm'){broadcast(msg,id);return;}
+        if(msg&&msg.type==='chat'){broadcast(msg,id);handleNetMessage(id,msg,conn);return;}
+        if(msg&&msg.type==='start-request'){handleNetMessage(id,msg,conn);return;}
+        broadcast(msg,id);
+      }else{
+        handleNetMessage(id,msg,conn);
+      }
+    });
+    conn.on('close',()=>{if(isRoomHost){connections.delete(id);broadcast({type:'peer-left',id});removeRemote(id);}else if(hostConn===conn){hostConn=null;setOnlineStatus('Host connection lost. You can return to the menu and reconnect.','bad');}showPresence();});
+    conn.on('error',()=>{setOnlineStatus('Connection interrupted. Check both players are online.','bad');});
+  }
+  function removeRemote(id){const p=remotePlayers.get(id);if(p){if(p.mesh.parent)p.mesh.parent.remove(p.mesh);p.tag.remove();remotePlayers.delete(id);}showPresence();}
+  function startOnlineGame(mode='match'){
+    if(!originalStartGame)return;
+    onlineStarted=true;roomStarting=true;
+    if(mode==='bomb'){mode='match';toast('Online rooms currently use Deathmatch. Bomb mode remains available offline.');}
+    originalStartGame(mode);
+    if(isRoomHost)broadcast({type:'start',mode});
+    setOnlineStatus('In room '+roomCode+' · '+(1+remotePlayers.size)+' connected','good');
+  }
+  async function createRoom(){
+    if(!window.Peer){setOnlineStatus('Could not load the P2P library. Refresh and try again.','bad');return;}
+    if(peer)resetNetwork('Starting a new room…');
+    setOnlineStatus('Creating a private room…');
+    let code=makeCode();peer=new Peer(roomPeerId(code),{debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});
+    isRoomHost=true;roomCode=code;
+    peer.on('open',()=>{
+      online=true;localSessionId=peer.id;setLobbyControls(true);$('online-room-code-display').textContent=roomCode;$('online-room-code').value=roomCode;
+      setOnlineStatus('Room ready. Share the code, then play.','good');
+      startOnlineGame('match');
+    });
+    peer.on('connection',conn=>attachConnection(conn,false));
+    peer.on('error',err=>{
+      const msg=err&&err.type==='unavailable-id'?'Room code collision. Create the room again.':'Could not create/connect room. Try again.';
+      setOnlineStatus(msg,'bad');if(peer&&peer.destroyed)resetNetwork(msg);
+    });
+  }
+  function joinRoom(){
+    if(!window.Peer){setOnlineStatus('Could not load the P2P library. Refresh and try again.','bad');return;}
+    const code=$('online-room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(code.length<4){setOnlineStatus('Enter the room code your friend shared.','bad');return;}
+    if(peer)resetNetwork('Connecting…');
+    roomCode=code;isRoomHost=false;setOnlineStatus('Finding room '+code+'…');
+    peer=new Peer({debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});
+    peer.on('open',id=>{
+      localSessionId=id;
+      hostConn=peer.connect(roomPeerId(code),{reliable:true,serialization:'json'});
+      attachConnection(hostConn,true);
+      setLobbyControls(true);$('online-room-code-display').textContent=roomCode;
+    });
+    peer.on('error',err=>setOnlineStatus(err&&err.type==='peer-unavailable'?'Room not found. Check the code and ask the host to recreate it.':'Connection error. Please try again.','bad'));
+  }
+  function currentState(){
+    if(!camera)return null;
+    return {x:camera.position.x,y:camera.position.y,z:camera.position.z,yaw:camera.rotation.y,pitch:camera.rotation.x,hp:health,alive:playerAlive,weapon:currentWeapon,kills:playerKills,deaths:playerDeaths,team:playerTeam||'free',name:playerName||'PLAYER',time:matchTimeLeft};
+  }
+  function sendState(){
+    if(!online||!gameRunning)return;
+    const state=currentState();if(!state)return;
+    broadcast({type:'state',name:playerName,state});
+    for(const [id,p] of remotePlayers){
+      if(!p.state)continue;
+      const s=p.state,alpha=Math.min(1,(performance.now()-p.lastUpdate)/100);
+      p.mesh.position.lerp(new THREE.Vector3(s.x,s.y-1.7,s.z),Math.min(.72,alpha));
+      p.mesh.rotation.y=s.yaw||0;
+      p.mesh.visible=s.alive!==false;
+      if(p.tag){
+        const pos=new THREE.Vector3(s.x,s.y-.15,s.z);
+        pos.project(camera);
+        const x=(pos.x*.5+.5)*innerWidth,y=(-pos.y*.5+.5)*innerHeight;
+        p.tag.style.left=x+'px';p.tag.style.top=y+'px';
+        p.tag.style.display=(pos.z>-1&&pos.z<1&&x>0&&x<innerWidth&&y>0&&y<innerHeight&&s.alive!==false)?'block':'none';
+        p.tag.textContent=(s.name||p.name)+' · '+Math.max(0,s.hp||0);
+      }
+    }
+    showPresence();
+  }
+  function showRemoteShot(msg){
+    if(!scene||!msg.origin||!msg.direction)return;
+    const a=new THREE.Vector3(msg.origin.x,msg.origin.y,msg.origin.z);
+    const d=new THREE.Vector3(msg.direction.x,msg.direction.y,msg.direction.z).normalize();
+    const b=a.clone().addScaledVector(d,Math.min(30,msg.range||30));
+    const geom=new THREE.BufferGeometry().setFromPoints([a,b]);
+    const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0x79caff,transparent:true,opacity:.62}));
+    scene.add(line);setTimeout(()=>{scene.remove(line);geom.dispose();line.material.dispose();},90);
+  }
+  function announceShot(){
+    if(!online||!gameRunning||!camera)return;
+    const direction=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+    const w=window.WEAPONS&&WEAPONS[currentWeapon];
+    broadcast({type:'shot',from:localSessionId,origin:{x:camera.position.x,y:camera.position.y,z:camera.position.z},direction:{x:direction.x,y:direction.y,z:direction.z},range:currentWeapon==='awp'?90:55,damage:w?Math.round(w.damage*.7):18});
+  }
+  function install(){
+    originalStartGame=window.startGame;
+    if(typeof originalStartGame==='function'){
+      window.startGame=function(mode='match',side=null){
+        if(online){if(mode==='bomb'){toast('Bomb mode is currently offline-only.');return;}startOnlineGame(mode);return;}
+        return originalStartGame(mode,side);
+      };
+    }
+    originalBuildMap=window.buildMap;
+    if(typeof originalBuildMap==='function'){
+      window.buildMap=function(mode='match'){
+        const result=originalBuildMap(mode);
+        addWorldDetail(mode);
+        return result;
+      };
+    }
+    const originalShoot=window.doShoot;
+    if(typeof originalShoot==='function')window.doShoot=function(){const before=lastFired;originalShoot();if(lastFired!==before)announceShot();};
+    $('online-create').addEventListener('click',createRoom);
+    $('online-join').addEventListener('click',joinRoom);
+    $('online-leave').addEventListener('click',()=>{resetNetwork('Disconnected. You can create or join another room.');if(gameRunning)returnToMainMenu();});
+    $('online-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(roomCode);setOnlineStatus('Room code copied. Share it with your friends.','good');}catch(e){$('online-room-code').select();setOnlineStatus('Select and copy the room code above.');}});
+    $('online-room-code').addEventListener('keydown',e=>{if(e.key==='Enter')joinRoom();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&online&&gameRunning){e.preventDefault();}});
+    setInterval(sendState,NET_TICK);
+    window.addEventListener('beforeunload',()=>{if(peer)peer.destroy();});
+  }
+  function addWorldDetail(mode){
+    if(!window.THREE||!mapRoot||mode==='test')return;
+    const box=(w,h,d,x,y,z,color,opts={})=>{
+      const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:opts.roughness??.8,metalness:opts.metalness??.12,emissive:opts.emissive||0,emissiveIntensity:opts.emissive?0.24:0}));
+      mesh.position.set(x,y,z);mesh.castShadow=!IS_MOBILE_DEVICE;mesh.receiveShadow=true;addToMap(mesh);return mesh;
+    };
+    const light=(x,y,z,color=0xffc56e)=>{
+      const fixture=box(.8,.12,.42,x,y,z,0x242a34,{metalness:.55});
+      box(.56,.035,.24,x,y-.08,z,color,{emissive:color,metalness:.1});
+      if(!IS_MOBILE_DEVICE){const l=new THREE.PointLight(color,.45,12);l.position.set(x,y-.2,z);addToMap(l);}
+    };
+    // Raised curbs and repeated lane markings add scale without changing the collision layout.
+    for(const x of [-48,-32,-16,0,16,32,48]){
+      box(.16,.05,88,x,.035,0,0x747b86,{metalness:.25});
+    }
+    for(let z=-42;z<=42;z+=8){
+      box(.18,.025,3,0,.045,z,0xc6a96a,{metalness:.1});
+      box(.18,.025,3,-8,.045,z,0x555d69);
+      box(.18,.025,3,8,.045,z,0x555d69);
+    }
+    // Industrial columns, vent panels, wall lights and warning stripes create a deliberate visual language.
+    const extent=mode==='bomb'?60:44;
+    for(const side of [-1,1]){
+      for(let z=-32;z<=32;z+=16){
+        const x=side*extent;
+        box(.42,5.4,.5,x,2.7,z,0x343e4c,{metalness:.48});
+        box(.08,3.8,.12,x-side*.24,2.7,z,0x7d8998,{metalness:.6});
+        light(x-side*.4,5.2,z,side<0?0x6c9fff:0xffc16c);
+      }
+    }
+    for(const z of [-38,-22,-6,10,26,42]){
+      for(const x of [-36,36]){
+        box(2.1,1.2,.18,x,3.1,z,0x252e3b,{metalness:.42});
+        for(let n=0;n<5;n++)box(.08,.85,.22,x-0.78+n*.39,3.1,z-.02,0x5d6b7c,{metalness:.62});
+      }
+    }
+    // Cover props are placed in open lanes, not across the bomb routes.
+    const crate=(x,z,s=1)=>{
+      const y=.62*s;
+      box(1.5*s,1.2*s,1.5*s,x,y,z,0x67513a,{metalness:.04});
+      for(const off of [-.45,.45])box(.08*s,1.23*s,1.58*s,x+off*s,y,z,0x9a7848,{metalness:.18});
+      box(1.55*s,.08*s,1.55*s,x,y+.62*s,z,0x3a414b,{metalness:.35});
+      box(1.54*s,.08*s,1.54*s,x,y-.62*s,z,0x3a414b,{metalness:.35});
+    };
+    const crateSpots=mode==='bomb'?[[-42,2],[-42,-2],[42,2],[42,-2],[-12,34],[12,34],[-12,-34],[12,-34]]:[[-28,-12],[28,12],[-12,28],[12,-28],[-34,24],[34,-24]];
+    crateSpots.forEach((p,i)=>{crate(p[0],p[1],i%3===0?1.15:1);});
+    // Site identifiers with emissive accents make objectives readable from a distance.
+    if(mode==='bomb'){
+      for(const [label,site,color] of [['A',BOMB_SITES.A,0xff9c53],['B',BOMB_SITES.B,0x58baff]]){
+        box(2.8,2.1,.18,site.center.x,2.3,site.center.z-7,color,{emissive:color,metalness:.1});
+        box(2.25,1.6,.22,site.center.x,2.3,site.center.z-6.82,0x111820,{metalness:.4});
+        const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+        const ctx=canvas.getContext('2d');ctx.fillStyle='#111820';ctx.fillRect(0,0,128,128);ctx.strokeStyle=label==='A'?'#ff9c53':'#58baff';ctx.lineWidth=8;ctx.strokeRect(8,8,112,112);ctx.fillStyle='#ffffff';ctx.font='bold 76px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,64,66);
+        const texture=new THREE.CanvasTexture(canvas);const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.8,1.35),new THREE.MeshBasicMaterial({map:texture,transparent:false}));sign.position.set(site.center.x,2.3,site.center.z-6.68);addToMap(sign);
+      }
+    }
+    // Ambient rubble, ground inlays and metal access panels.
+    for(let i=0;i<28;i++){
+      const x=(Math.sin(i*17.13)*.5+.5)*(extent*1.45)-extent*.72;
+      const z=(Math.cos(i*9.71)*.5+.5)*90-45;
+      const debris=box(.24+(i%3)*.1,.035,.16,x,.055,z,i%2?0x4c515d:0x786c59);
+      debris.rotation.y=(i*.71)%Math.PI;
+    }
+  }
+  // Bot anti-stuck recovery: after repeated near-zero movement, sidestep and reacquire a target.
+  function patchBotRecovery(){
+    if(!window.Bot||!Bot.prototype||Bot.prototype.__shootitRecovery)return;
+    const oldUpdate=Bot.prototype.update;
+    Bot.prototype.update=function(dt,positions){
+      const before=this.mesh&&this.mesh.position.clone();
+      oldUpdate.call(this,dt,positions);
+      if(!this.alive||!before||!this.mesh)return;
+      const moved=this.mesh.position.distanceTo(before);
+      if(moved<.018&&this.target&&this.mesh.position.distanceTo(this.target==='player'?camera.position:(this.target.mesh?this.target.mesh.position:this.mesh.position))>4){
+        this._shootitStuck=(this._shootitStuck||0)+dt;
+        if(this._shootitStuck>1.1){
+          const dir=new THREE.Vector3(Math.random()-.5,0,Math.random()-.5).normalize();
+          const escape=this.mesh.position.clone().addScaledVector(dir,5+Math.random()*3);
+          escape.x=Math.max(-MAP_BOUND+3,Math.min(MAP_BOUND-3,escape.x));escape.z=Math.max(-MAP_BOUND+3,Math.min(MAP_BOUND-3,escape.z));
+          this.target=null;this.unstuckTarget=escape;this.patrolTarget.copy(escape);this._patrolTick=.2;this._shootitStuck=0;
+        }
+      }else this._shootitStuck=0;
+    };
+    Bot.prototype.__shootitRecovery=true;
+  }
+  // Wait until the original game script has initialized all its declarations.
+  window.addEventListener('load',()=>{install();patchBotRecovery();});
+})();
+</script>
+
 </body>
 </html>
