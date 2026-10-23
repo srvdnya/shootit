@@ -1900,7 +1900,7 @@ class Bot{
         targetPos=getAttackAdvanceTarget(this);
       } else if(bombPlanted && this.team==='defend' && !targetPos){
         const knownSite=plantedBombSite||defendersKnownSite||getDefenderSearchSite(this);
-        targetPos=BOMB_SITES[knownSite].center.clone();
+        targetPos=plantedBombMesh?plantedBombMesh.position.clone():BOMB_SITES[knownSite].plant.clone();
       } else if(bombPlanted && this.team==='attack' && !targetPos){
         const holdOffsets=plantedBombSite==='A'
           ? [new THREE.Vector3(-7,0,10),new THREE.Vector3(10,0,2),new THREE.Vector3(-14,0,-4),new THREE.Vector3(-24,0,14),new THREE.Vector3(-4,0,-10)]
@@ -2514,7 +2514,8 @@ function updateBombMode(dt){
     }
     const defuser=bots
       .filter(b=>b.alive&&b.team==='defend')
-      .sort((a,b)=>a.mesh.position.distanceTo(bombPos)-b.mesh.position.distanceTo(bombPos))[0];
+      .sort((a,b)=>a.mesh.position.distanceTo(bombPos)-b.mesh.position.distanceTo(bombPos))
+      .find(b=>canDefenderCommitDefuse(b,bombPos));
     if(defuser && defuser.mesh.position.distanceTo(bombPos)<2.6 && canDefenderCommitDefuse(defuser,bombPos)){
       defuser._bombAction=(defuser._bombAction||0)+dt*1000;
       if(defuser._bombAction>=BOMB_DEFUSE_TIME){
@@ -4003,15 +4004,21 @@ function knifeAttack(btn){
           const wallHits=wallRay.intersectObjects((solidObjects||[]).map(o=>o.mesh),false);
           if(distance<.82&&(!wallHits.length||wallHits[0].distance>along-.6)){
             const dmg=Math.max(6,Math.min(45,Number(msg.damage)||18));
+            const wasAlive=playerAlive;
             takeDamage(dmg,origin,null);
             broadcast({type:'hit-confirm',target:localSessionId,attacker:msg.from,damage:dmg});
+            if(wasAlive&&!playerAlive)broadcast({type:'pvp-kill',attacker:msg.from,target:localSessionId,targetName:playerName});
           }
         }
       }
       return;
     }
     if(msg.type==='hit-confirm'){
-      if(msg.attacker===localSessionId){toast('HIT · '+msg.damage);if(msg.killed){playerKills++;updateHUD();}}
+      if(msg.attacker===localSessionId)toast('HIT · '+msg.damage);
+      return;
+    }
+    if(msg.type==='pvp-kill'){
+      if(msg.attacker===localSessionId){playerKills++;updateHUD();showKillFeed(playerName,msg.targetName||'PLAYER',false,false);toast('ELIMINATED · '+(msg.targetName||'PLAYER'));}
       return;
     }
     if(msg.type==='chat'){toast((msg.name||'PLAYER')+': '+String(msg.text||'').slice(0,80));return;}
