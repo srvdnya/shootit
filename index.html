@@ -3969,7 +3969,6 @@ function knifeAttack(btn){
       return;
     }
     if(msg.type==='welcome'){
-      localSessionId=fromId;
       roomStarting=!!msg.started;
       if(msg.started&&!gameRunning){startOnlineGame(msg.mode||'match');}
       setOnlineStatus('Connected to room '+roomCode+' · waiting for game state','good');
@@ -4079,7 +4078,7 @@ function knifeAttack(btn){
     roomCode=code;isRoomHost=false;setOnlineStatus('Finding room '+code+'…');
     peer=new Peer({debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});
     peer.on('open',id=>{
-      localSessionId=id;
+      localSessionId=id;online=true;
       hostConn=peer.connect(roomPeerId(code),{reliable:true,serialization:'json'});
       attachConnection(hostConn,true);
       setLobbyControls(true);$('online-room-code-display').textContent=roomCode;
