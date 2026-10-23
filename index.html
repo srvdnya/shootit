@@ -3234,7 +3234,7 @@ window.addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1.25:2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio,IS_MOBILE_DEVICE?1:1.5));
 });
 document.addEventListener('pointerlockchange',()=>{
   if(!document.pointerLockElement&&gameRunning){
@@ -4148,67 +4148,168 @@ function knifeAttack(btn){
   }
   function addWorldDetail(mode){
     if(!window.THREE||!mapRoot||mode==='test')return;
-    const box=(w,h,d,x,y,z,color,opts={})=>{
-      const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:opts.roughness??.8,metalness:opts.metalness??.12,emissive:opts.emissive||0,emissiveIntensity:opts.emissive?0.24:0}));
-      mesh.position.set(x,y,z);mesh.castShadow=!IS_MOBILE_DEVICE;mesh.receiveShadow=true;addToMap(mesh);return mesh;
+    const trimMat=new THREE.MeshLambertMaterial({color:0x596574});
+    const darkMat=new THREE.MeshLambertMaterial({color:0x202833});
+    const accentA=new THREE.MeshBasicMaterial({color:0xc77b43});
+    const accentB=new THREE.MeshBasicMaterial({color:0x4e91ba});
+    const floorMark=new THREE.MeshLambertMaterial({color:0x666b70});
+    const addBox=(w,h,d,x,y,z,material)=>{
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+      m.position.set(x,y,z);m.receiveShadow=false;m.castShadow=false;addToMap(m);return m;
     };
-    const light=(x,y,z,color=0xffc56e)=>{
-      const fixture=box(.8,.12,.42,x,y,z,0x242a34,{metalness:.55});
-      box(.56,.035,.24,x,y-.08,z,color,{emissive:color,metalness:.1});
-      if(!IS_MOBILE_DEVICE){const l=new THREE.PointLight(color,.45,12);l.position.set(x,y-.2,z);addToMap(l);}
+    const floorStrip=(w,d,x,z,material=floorMark)=>{
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),material);
+      m.rotation.x=-Math.PI/2;m.position.set(x,.018,z);addToMap(m);return m;
     };
-    // Raised curbs and repeated lane markings add scale without changing the collision layout.
-    for(const x of [-48,-32,-16,0,16,32,48]){
-      box(.16,.05,88,x,.035,0,0x747b86,{metalness:.25});
-    }
-    for(let z=-42;z<=42;z+=8){
-      box(.18,.025,3,0,.045,z,0xc6a96a,{metalness:.1});
-      box(.18,.025,3,-8,.045,z,0x555d69);
-      box(.18,.025,3,8,.045,z,0x555d69);
-    }
-    // Industrial columns, vent panels, wall lights and warning stripes create a deliberate visual language.
-    const extent=mode==='bomb'?60:44;
+    const isBomb=mode==='bomb';
+    const sideLane=isBomb?58:43.5;
+    const zMarks=isBomb?[-50,-42,-34,-14,-6,2,10,30,38,46,54]:[-42,-30,-14,-6,2,14,30,42];
+    for(const z of (isBomb?[-48,-40,-8,0,8,40,48]:[-42,-24,-8,0,8,24,42]))floorStrip(1.8,.12,0,z);
     for(const side of [-1,1]){
-      for(let z=-32;z<=32;z+=16){
-        const x=side*extent;
-        box(.42,5.4,.5,x,2.7,z,0x343e4c,{metalness:.48});
-        box(.08,3.8,.12,x-side*.24,2.7,z,0x7d8998,{metalness:.6});
-        light(x-side*.4,5.2,z,side<0?0x6c9fff:0xffc16c);
+      for(const z of zMarks)floorStrip(.1,2.2,side*sideLane,z,side<0?accentA:accentB);
+    }
+    // Slim wall-mounted service panels are flush with the actual inner wall face.
+    const wallFace=isBomb?64.96:49.24;
+    for(const side of [-1,1]){
+      const x=side*wallFace;
+      for(const z of (isBomb?[-48,-32,-16,0,16,32,48]:[-36,-24,-12,0,12,24,36])){
+        addBox(.08,1.65,2.6,x,2.35,z,darkMat);
+        for(let k=0;k<4;k++)addBox(.1,.08,2.15,x,1.8+k*.35,z,trimMat);
+        addBox(.11,.12,.55,x,2.45,z,side<0?accentA:accentB);
       }
     }
-    for(const z of [-38,-22,-6,10,26,42]){
-      for(const x of [-36,36]){
-        box(2.1,1.2,.18,x,3.1,z,0x252e3b,{metalness:.42});
-        for(let n=0;n<5;n++)box(.08,.85,.22,x-0.78+n*.39,3.1,z-.02,0x5d6b7c,{metalness:.62});
-      }
-    }
-    // Cover props are placed in open lanes, not across the bomb routes.
-    const crate=(x,z,s=1)=>{
-      const y=.62*s;
-      const body=box(1.5*s,1.2*s,1.5*s,x,y,z,0x67513a,{metalness:.04});solidObjects.push({mesh:body,hx:.75*s,hy:.6*s,hz:.75*s,px:x,py:y,pz:z});
-      for(const off of [-.45,.45])box(.08*s,1.23*s,1.58*s,x+off*s,y,z,0x9a7848,{metalness:.18});
-      box(1.55*s,.08*s,1.55*s,x,y+.62*s,z,0x3a414b,{metalness:.35});
-      box(1.54*s,.08*s,1.54*s,x,y-.62*s,z,0x3a414b,{metalness:.35});
+    // Cover crates are grounded, collision-aware, and skipped if the level already occupies the space.
+    const canPlace=(x,z,hx=.72,hz=.72)=>{
+      if(Math.abs(x)> (isBomb?61:45)||Math.abs(z)>(isBomb?61:45))return false;
+      return !solidObjects.some(o=>Math.abs(.62-o.py)<o.hy+.72&&Math.abs(x-o.px)<o.hx+hx+.35&&Math.abs(z-o.pz)<o.hz+hz+.35);
     };
-    const crateSpots=mode==='bomb'?[[-42,2],[-42,-2],[42,2],[42,-2],[-12,34],[12,34],[-12,-34],[12,-34]]:[[-28,-12],[28,12],[-12,28],[12,-28],[-34,24],[34,-24]];
-    crateSpots.forEach((p,i)=>{crate(p[0],p[1],i%3===0?1.15:1);});
-    // Site identifiers with emissive accents make objectives readable from a distance.
-    if(mode==='bomb'){
-      for(const [label,site,color] of [['A',BOMB_SITES.A,0xff9c53],['B',BOMB_SITES.B,0x58baff]]){
-        box(2.8,2.1,.18,site.center.x,2.3,site.center.z-7,color,{emissive:color,metalness:.1});
-        box(2.25,1.6,.22,site.center.x,2.3,site.center.z-6.82,0x111820,{metalness:.4});
-        const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
-        const ctx=canvas.getContext('2d');ctx.fillStyle='#111820';ctx.fillRect(0,0,128,128);ctx.strokeStyle=label==='A'?'#ff9c53':'#58baff';ctx.lineWidth=8;ctx.strokeRect(8,8,112,112);ctx.fillStyle='#ffffff';ctx.font='bold 76px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,64,66);
-        const texture=new THREE.CanvasTexture(canvas);const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.8,1.35),new THREE.MeshBasicMaterial({map:texture,transparent:false}));sign.position.set(site.center.x,2.3,site.center.z-6.68);addToMap(sign);
+    const crate=(x,z)=>{
+      const w=1.4,d=1.4,h=1.2;if(!canPlace(x,z,w/2,d/2))return;
+      const body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:0x66513a}));
+      body.position.set(x,h/2,z);body.castShadow=!IS_MOBILE_DEVICE;body.receiveShadow=true;addToMap(body);
+      solidObjects.push({mesh:body,hx:w/2,hy:h/2,hz:d/2,px:x,py:h/2,pz:z});
+      const bandMat=new THREE.MeshLambertMaterial({color:0x9a8058});
+      for(const side of [-1,1])addBox(.09,h+.025,d+.06,x+side*.43,h/2,z,bandMat);
+      addBox(w+.04,.07,d+.04,x,h+.035,z,darkMat);
+    };
+    const crateSpots=isBomb
+      ?[[-58,-43],[-39,-43],[-58,-8],[-39,-8],[39,-43],[58,-43],[39,-8],[58,-8]]
+      :[[-34,-16],[34,16],[-16,30],[16,-30]];
+    for(const [x,z] of crateSpots)crate(x,z);
+    if(isBomb){
+      for(const [id,site,material] of [['A',BOMB_SITES.A,accentA],['B',BOMB_SITES.B,accentB]]){
+        floorStrip(2.8,.14,site.center.x,site.center.z-6,material);
+        floorStrip(2.8,.14,site.center.x,site.center.z+6,material);
+        floorStrip(.14,12,site.center.x-8,site.center.z,material);
+        floorStrip(.14,12,site.center.x+8,site.center.z,material);
       }
     }
-    // Ambient rubble, ground inlays and metal access panels.
-    for(let i=0;i<28;i++){
-      const x=(Math.sin(i*17.13)*.5+.5)*(extent*1.45)-extent*.72;
-      const z=(Math.cos(i*9.71)*.5+.5)*90-45;
-      const debris=box(.24+(i%3)*.1,.035,.16,x,.055,z,i%2?0x4c515d:0x786c59);
-      debris.rotation.y=(i*.71)%Math.PI;
+  }
+  // A shared, lightweight grid is rebuilt once per map; bot routes reuse it.
+  let navGrid=null, navGridMin=-64, navGridStep=2, navGridCount=65, navActiveBot=null;
+  function navCellClear(ix,iz){
+    const x=navGridMin+ix*navGridStep,z=navGridMin+iz*navGridStep;
+    if(x<-62||x>62||z<-62||z>62)return false;
+    for(const o of solidObjects){
+      if(Math.abs(1.7-o.py)>=o.hy+.9)continue;
+      if(Math.abs(x-o.px)<o.hx+.43&&Math.abs(z-o.pz)<o.hz+.43)return false;
     }
+    return true;
+  }
+  function buildNavGrid(){
+    navGrid=new Uint8Array(navGridCount*navGridCount);
+    for(let z=0;z<navGridCount;z++)for(let x=0;x<navGridCount;x++)navGrid[z*navGridCount+x]=navCellClear(x,z)?1:0;
+  }
+  function navIndex(x,z){return z*navGridCount+x;}
+  function navNearestCell(pos){
+    const bx=Math.max(0,Math.min(navGridCount-1,Math.round((pos.x-navGridMin)/navGridStep)));
+    const bz=Math.max(0,Math.min(navGridCount-1,Math.round((pos.z-navGridMin)/navGridStep)));
+    if(navGrid[navIndex(bx,bz)])return {x:bx,z:bz};
+    for(let r=1;r<10;r++)for(let dz=-r;dz<=r;dz++)for(let dx=-r;dx<=r;dx++){
+      if(Math.abs(dx)!==r&&Math.abs(dz)!==r)continue;
+      const x=bx+dx,z=bz+dz;
+      if(x>=0&&x<navGridCount&&z>=0&&z<navGridCount&&navGrid[navIndex(x,z)])return {x,z};
+    }
+    return null;
+  }
+  function findNavPath(from,to){
+    if(!navGrid||!to)return [];
+    const start=navNearestCell(from),goal=navNearestCell(to);if(!start||!goal)return [];
+    const startId=navIndex(start.x,start.z),goalId=navIndex(goal.x,goal.z);if(startId===goalId)return [];
+    const prev=new Int32Array(navGrid.length);prev.fill(-1);
+    const seen=new Uint8Array(navGrid.length),queue=new Int32Array(navGrid.length);
+    let head=0,tail=0;queue[tail++]=startId;seen[startId]=1;
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    while(head<tail&&!seen[goalId]){
+      const cur=queue[head++],cx=cur%navGridCount,cz=(cur/navGridCount)|0;
+      for(const [dx,dz] of dirs){
+        const x=cx+dx,z=cz+dz;if(x<0||x>=navGridCount||z<0||z>=navGridCount)continue;
+        const ni=navIndex(x,z);if(seen[ni]||!navGrid[ni])continue;
+        seen[ni]=1;prev[ni]=cur;queue[tail++]=ni;if(ni===goalId)break;
+      }
+    }
+    if(!seen[goalId])return [];
+    const rev=[];for(let at=goalId;at!==startId&&at>=0;at=prev[at])rev.push(at);rev.reverse();
+    const path=[];let anchor={x:from.x,z:from.z},i=0;
+    while(i<rev.length){
+      let far=i;
+      for(let j=rev.length-1;j>=i;j--){
+        const id=rev[j],p={x:navGridMin+(id%navGridCount)*navGridStep,z:navGridMin+Math.floor(id/navGridCount)*navGridStep};
+        const steps=Math.max(1,Math.ceil(Math.hypot(p.x-anchor.x,p.z-anchor.z)/.8));let clear=true;
+        for(let k=1;k<=steps;k++){
+          const t=k/steps,ix=Math.max(0,Math.min(navGridCount-1,Math.round((anchor.x+(p.x-anchor.x)*t-navGridMin)/navGridStep))),iz=Math.max(0,Math.min(navGridCount-1,Math.round((anchor.z+(p.z-anchor.z)*t-navGridStep)/navGridStep)));
+          if(!navGrid[navIndex(ix,iz)]){clear=false;break;}
+        }
+        if(clear){far=j;break;}
+      }
+      const id=rev[far];anchor={x:navGridMin+(id%navGridCount)*navGridStep,z:navGridMin+Math.floor(id/navGridCount)*navGridStep};
+      path.push(new THREE.Vector3(anchor.x,0,anchor.z));i=far+1;
+    }
+    return path;
+  }
+  function navWaypoint(bot,goal){
+    if(!goal||!navGrid)return goal;
+    const now=performance.now(),changed=!bot._navGoal||bot._navGoal.distanceTo(goal)>2.5;
+    if(changed||!bot._navPath||now>(bot._navRepathAt||0)){
+      bot._navGoal=goal.clone();bot._navPath=findNavPath(bot.mesh.position,goal);bot._navPathIndex=0;bot._navRepathAt=now+1800;
+    }
+    const path=bot._navPath||[];
+    while(bot._navPathIndex<path.length&&bot.mesh.position.distanceTo(path[bot._navPathIndex])<1.35)bot._navPathIndex++;
+    return bot._navPathIndex<path.length?path[bot._navPathIndex]:goal;
+  }
+  function patchBombNavigation(){
+    if(typeof Bot==='undefined'||!Bot.prototype||Bot.prototype.__shootitNavigation)return;
+    const originalAdvance=getAttackAdvanceTarget,originalDefend=getDefendAnchor;
+    let active=null;
+    getAttackAdvanceTarget=function(bot){
+      if(gameMode!=='bomb')return originalAdvance(bot);
+      if(!bot||bot.team!=='attack')return null;
+      let goal;
+      if(bombDroppedPos&&bot.id===bombCarrierBotId)goal=bombDroppedPos.clone();
+      else if(playerAlive&&playerTeam==='attack'&&playerHasBomb){
+        const offsets=[[-3,0,4],[3,0,4],[-5,0,0],[5,0,0],[0,0,7]],o=offsets[bot.teamSlot%offsets.length];
+        goal=camera.position.clone().add(new THREE.Vector3(o[0],o[1],o[2]));
+      }else{
+        const chosen=bombTargetSite==='A'?'A':'B',assigned=bot.role==='lurker'?(chosen==='A'?'B':'A'):chosen;
+        if(bot.id===bombCarrierBotId)goal=BOMB_SITES[chosen].plant.clone();
+        else{
+          const offsets=[[-8,0,4],[8,0,4],[-12,0,-6],[12,0,-6],[0,0,10]],o=offsets[bot.teamSlot%offsets.length];
+          goal=BOMB_SITES[assigned].plant.clone().add(new THREE.Vector3(o[0],o[1],o[2]));
+        }
+      }
+      return active===bot?navWaypoint(bot,goal):goal;
+    };
+    getDefendAnchor=function(bot){
+      const goal=originalDefend(bot);
+      return gameMode==='bomb'&&active===bot?navWaypoint(bot,goal):goal;
+    };
+    const originalUpdate=Bot.prototype.update;
+    Bot.prototype.update=function(dt,positions){
+      active=this;navActiveBot=this;
+      try{return originalUpdate.call(this,dt,positions);}
+      finally{active=null;navActiveBot=null;}
+    };
+    Bot.prototype.__shootitNavigation=true;
   }
   // Bot anti-stuck recovery: after repeated near-zero movement, sidestep and reacquire a target.
   function patchBotRecovery(){
@@ -4255,7 +4356,7 @@ function knifeAttack(btn){
     Bot.prototype.__shootitRecovery=true;
   }
   // Wait until the original game script has initialized all its declarations.
-  window.addEventListener('load',()=>{install();patchBotRecovery();});
+  window.addEventListener('load',()=>{install();patchBombNavigation();patchBotRecovery();});
 })();
 </script>
 
