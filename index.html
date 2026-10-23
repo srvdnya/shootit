@@ -4178,6 +4178,30 @@ function knifeAttack(btn){
         addBox(.11,.12,.55,x,2.45,z,side<0?accentA:accentB);
       }
     }
+    // Surface-mounted panels add scale to existing walls without creating floating geometry or extra collisions.
+    for(const o of solidObjects){
+      if(o.hy<1.45 || (o.hx<4&&o.hz<4))continue;
+      const panelY=Math.min(o.py+0.1,o.hy+o.py-0.9);
+      if(o.hx>=o.hz){
+        for(const face of [-1,1]){
+          const faceZ=o.pz+face*(o.hz+.025);
+          const spacing=Math.max(4.5,Math.min(7,o.hx*1.35));
+          for(let x=o.px-o.hx+spacing/2;x<o.px+o.hx-spacing/2;x+=spacing){
+            addBox(Math.min(1.7,spacing*.52),1.35,.045,x,panelY,faceZ,darkMat);
+            addBox(.055,1.05,.055,x-Math.min(.55,spacing*.2),panelY,faceZ+face*.03,trimMat);
+          }
+        }
+      }else{
+        for(const face of [-1,1]){
+          const faceX=o.px+face*(o.hx+.025);
+          const spacing=Math.max(4.5,Math.min(7,o.hz*1.35));
+          for(let z=o.pz-o.hz+spacing/2;z<o.pz+o.hz-spacing/2;z+=spacing){
+            addBox(.045,1.35,Math.min(1.7,spacing*.52),faceX,panelY,z,darkMat);
+            addBox(.055,1.05,.055,faceX+face*.03,panelY,z-Math.min(.55,spacing*.2),trimMat);
+          }
+        }
+      }
+    }
     // Cover crates are grounded, collision-aware, and skipped if the level already occupies the space.
     const canPlace=(x,z,hx=.72,hz=.72)=>{
       if(Math.abs(x)> (isBomb?61:45)||Math.abs(z)>(isBomb?61:45))return false;
